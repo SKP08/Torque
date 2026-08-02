@@ -3,3 +3,9 @@
 2026-08-03 00:01:21.387 | SUCCESS  | torque.system.bootstrap:initialize:18 - All services initialized.
 2026-08-03 00:01:21.387 | SUCCESS  | torque.core.runtime:start:22 - Torque is running.
 2026-08-03 00:01:38.997 | INFO     | torque.core.runtime:start:29 - Torque shutting down...
+2026-08-03 00:11:05.988 | INFO     | torque.system.logging_service:initialize:32 - Logging initialized.
+2026-08-03 00:11:05.988 | INFO     | torque.system.service_manager:initialize:19 - Initializing Database Service...
+2026-08-03 00:11:05.989 | INFO     | torque.system.database_service:initialize:23 - Database found.
+2026-08-03 00:11:05.989 | SUCCESS  | torque.system.service_manager:initialize:22 - All services initialized.
+2026-08-03 00:11:05.989 | SUCCESS  | torque.core.runtime:start:22 - Torque is running.
+2026-08-03 00:11:49.914 | INFO     | torque.core.runtime:start:29 - Torque shutting down...

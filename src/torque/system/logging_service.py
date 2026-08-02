@@ -2,14 +2,18 @@ from pathlib import Path
 
 from loguru import logger
 
+from torque.system.service import Service
 
-class LoggingService:
+
+class LoggingService(Service):
+
+    @property
+    def name(self):
+        return "Logging Service"
 
     def initialize(self):
 
-        log_path = Path("logs")
-
-        log_path.mkdir(exist_ok=True)
+        Path("logs").mkdir(exist_ok=True)
 
         logger.remove()
 

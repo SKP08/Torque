@@ -1,18 +1,15 @@
-from loguru import logger
-
 from torque.system.database_service import DatabaseService
 from torque.system.logging_service import LoggingService
+from torque.system.service_manager import ServiceManager
 
 
 class Bootstrap:
-    """
-    Initializes all Torque services.
-    """
 
     def initialize(self):
-        logger.info("Initializing services...")
 
-        LoggingService().initialize()
-        DatabaseService().initialize()
+        manager = ServiceManager()
 
-        logger.success("All services initialized.")
+        manager.register(LoggingService())
+        manager.register(DatabaseService())
+
+        manager.initialize()
