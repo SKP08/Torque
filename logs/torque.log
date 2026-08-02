@@ -27,3 +27,22 @@
 2026-08-03 00:21:34.147 | SUCCESS  | torque.system.service_manager:initialize:22 - All services initialized.
 2026-08-03 00:21:34.148 | SUCCESS  | torque.core.runtime:start:23 - Torque is running.
 2026-08-03 00:22:15.827 | INFO     | torque.core.runtime:start:39 - Torque shutting down...
+2026-08-03 00:25:20.774 | INFO     | torque.system.logging_service:initialize:32 - Logging initialized.
+2026-08-03 00:25:20.775 | INFO     | torque.system.service_manager:initialize:19 - Initializing Database Service...
+2026-08-03 00:25:20.775 | INFO     | torque.system.database_service:initialize:23 - Database found.
+2026-08-03 00:25:20.775 | INFO     | torque.system.service_manager:initialize:19 - Initializing Hotkey Service...
+2026-08-03 00:25:20.865 | INFO     | torque.system.hotkey_service:initialize:19 - Global hotkey registered: Ctrl+Space
+2026-08-03 00:25:20.866 | SUCCESS  | torque.system.service_manager:initialize:22 - All services initialized.
+2026-08-03 00:25:20.866 | SUCCESS  | torque.core.runtime:start:23 - Torque is running.
+2026-08-03 00:25:34.631 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:40.241 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:40.559 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:40.775 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:40.975 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:41.158 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:41.341 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:41.510 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:41.666 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:41.812 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:25:41.951 | SUCCESS  | torque.system.hotkey_service:_on_hotkey:22 - Global hotkey pressed.
+2026-08-03 00:26:42.319 | INFO     | torque.core.runtime:start:39 - Torque shutting down...

@@ -1,5 +1,6 @@
 from torque.system.config_service import ConfigService
 from torque.system.database_service import DatabaseService
+from torque.system.hotkey_service import HotkeyService
 from torque.system.logging_service import LoggingService
 
 
@@ -12,4 +13,5 @@ def get_services():
         ConfigService(),
         LoggingService(),
         DatabaseService(),
+        HotkeyService(),
     ]
