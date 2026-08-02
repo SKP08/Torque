@@ -1,0 +1,5 @@
+2026-08-03 00:01:21.386 | INFO     | torque.system.logging_service:initialize:28 - Logging initialized.
+2026-08-03 00:01:21.386 | INFO     | torque.system.database_service:initialize:21 - Database found.
+2026-08-03 00:01:21.387 | SUCCESS  | torque.system.bootstrap:initialize:18 - All services initialized.
+2026-08-03 00:01:21.387 | SUCCESS  | torque.core.runtime:start:22 - Torque is running.
+2026-08-03 00:01:38.997 | INFO     | torque.core.runtime:start:29 - Torque shutting down...
