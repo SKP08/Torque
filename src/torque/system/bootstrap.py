@@ -1,6 +1,5 @@
-from torque.system.database_service import DatabaseService
-from torque.system.logging_service import LoggingService
 from torque.system.service_manager import ServiceManager
+from torque.system.service_registry import get_services
 
 
 class Bootstrap:
@@ -9,7 +8,7 @@ class Bootstrap:
 
         manager = ServiceManager()
 
-        manager.register(LoggingService())
-        manager.register(DatabaseService())
+        for service in get_services():
+            manager.register(service)
 
         manager.initialize()

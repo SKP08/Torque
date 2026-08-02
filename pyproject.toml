@@ -19,6 +19,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pynput>=1.8.2",
     "pyside6>=6.11.1",
+    "pystray>=0.19.5",
     "python-dotenv>=1.2.2",
     "qdrant-client>=1.18.0",
 ]

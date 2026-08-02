@@ -1,0 +1,8 @@
+{
+    "assistant_name": "Torque",
+    "startup": true,
+    "hotkey": "ctrl+space",
+    "theme": "dark",
+    "voice_enabled": true,
+    "notifications": true
+}
