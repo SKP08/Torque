@@ -4,11 +4,11 @@ from torque.system.service_registry import get_services
 
 class Bootstrap:
 
+    def __init__(self):
+        self.manager = ServiceManager()
+
     def initialize(self):
-
-        manager = ServiceManager()
-
         for service in get_services():
-            manager.register(service)
+            self.manager.register(service)
 
-        manager.initialize()
+        self.manager.initialize()

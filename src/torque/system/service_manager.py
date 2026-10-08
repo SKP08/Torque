@@ -9,6 +9,10 @@ class ServiceManager:
     def __init__(self):
         self._services = []
 
+    @property
+    def services(self):
+        return self._services
+
     def register(self, service):
         self._services.append(service)
 
@@ -20,3 +24,14 @@ class ServiceManager:
             service.initialize()
 
         logger.success("All services initialized.")
+
+    def get(self, service_type):
+        """
+        Return the first service matching the given class.
+        """
+
+        for service in self._services:
+            if isinstance(service, service_type):
+                return service
+
+        return None
