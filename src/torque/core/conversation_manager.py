@@ -1,147 +1,106 @@
 from loguru import logger
 
-from torque.audio.speech_service import SpeechService
+from torque.conversation.conversation_policy import is_stop_phrase
 
 
 class ConversationManager:
+    """
+    Owns the state of one spoken conversation: whether it is active, the
+    message history, and the microphone.
+    """
 
-    MAX_HISTORY = 10
+    MAX_HISTORY = 12
 
-    # Phrases that explicitly mean the user wants to end
-    # the conversation with Torque.
-    STOP_PHRASES = {
-        "bye",
-        "goodbye",
-        "see you",
-        "thank you bye",
-        "go away",
-        "fuck off",
-    }
+    def __init__(self, speech=None):
 
-    def __init__(self):
+        if speech is None:
+            from torque.audio.speech_service import SpeechService
 
-        self.speech = SpeechService()
+            speech = SpeechService()
+
+        self.speech = speech
 
         self.active = False
 
         self.history = []
 
     # ==========================================================
-    # CONVERSATION LIFECYCLE
+    # LIFECYCLE
     # ==========================================================
 
     def start(self):
 
-        # Reset any previous microphone state before
-        # starting a fresh conversation.
+        # Clear any cancel/stop left over from the previous conversation.
         self.speech.reset()
 
         self.active = True
 
         self.history.clear()
 
-        logger.success(
-            "Conversation started."
-        )
+        logger.success("Conversation started.")
 
     def stop(self):
 
         self.active = False
 
-        # Stop microphone recording immediately if active.
+        # Unblocks a microphone that is waiting for speech.
         self.speech.stop()
 
-        logger.success(
-            "Conversation ended."
-        )
+        logger.success("Conversation ended.")
 
     # ==========================================================
     # LISTENING
     # ==========================================================
 
-    def listen(self):
+    def listen(self, timeout=None):
+        """
+        Returns the transcript, "" if speech was heard but nothing was
+        recognised, or None if nobody spoke before the timeout / the
+        conversation was cancelled.
+        """
 
         if not self.active:
-
-            logger.debug(
-                "Listen requested while conversation is inactive."
-            )
-
             return None
 
-        return self.speech.listen()
+        return self.speech.listen(timeout=timeout)
 
     # ==========================================================
     # HISTORY
     # ==========================================================
 
     def add_user_message(self, text: str):
-
-        if not text:
-            return
-
-        self.history.append(
-            {
-                "role": "user",
-                "content": text,
-            }
-        )
-
-        self._trim_history()
+        self._add("user", text)
 
     def add_assistant_message(self, text: str):
+        self._add("assistant", text)
+
+    def _add(self, role: str, text: str):
 
         if not text:
             return
 
-        self.history.append(
-            {
-                "role": "assistant",
-                "content": text,
-            }
-        )
+        self.history.append({"role": role, "content": text})
 
         self._trim_history()
 
     def get_history(self):
-
         return list(self.history)
 
     def clear_history(self):
-
         self.history.clear()
-
-        logger.info(
-            "Conversation history cleared."
-        )
 
     def _trim_history(self):
 
         if len(self.history) > self.MAX_HISTORY:
+            self.history = self.history[-self.MAX_HISTORY:]
 
-            self.history = (
-                self.history[-self.MAX_HISTORY:]
-            )
+        # Never start the context with an orphaned assistant reply.
+        while self.history and self.history[0]["role"] != "user":
+            self.history.pop(0)
 
     # ==========================================================
-    # CONVERSATION STOP DETECTION
+    # STOP DETECTION
     # ==========================================================
 
-    def should_stop(
-        self,
-        text: str,
-    ) -> bool:
-
-        if not text:
-
-            return False
-
-        normalized = (
-            text.lower()
-            .strip()
-            .rstrip(".,!?")
-        )
-
-        # Only explicit conversational phrases should
-        # terminate the conversation.
-        return normalized in self.STOP_PHRASES
+    def should_stop(self, text: str) -> bool:
+        return is_stop_phrase(text)

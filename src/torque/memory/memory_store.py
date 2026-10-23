@@ -1,112 +1,103 @@
 import sqlite3
+import threading
 from pathlib import Path
 
 from torque.memory.memory_types import Memory
+from torque.paths import MEMORY_DB
 
 
 class MemoryStore:
+    """
+    SQLite-backed key/value memory. One connection guarded by a lock, so
+    it is safe to share between the chat thread and the background worker.
+    """
 
-    def __init__(self):
+    def __init__(self, db_path=None):
 
-        db = (
-            Path(__file__).resolve().parents[3]
-            / "data"
-            / "memory.db"
-        )
+        db = Path(db_path) if db_path else MEMORY_DB
 
-        db.parent.mkdir(exist_ok=True)
+        db.parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(
-            db,
-            check_same_thread=False,
-        )
+        self._lock = threading.RLock()
 
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memories (
+        self.conn = sqlite3.connect(db, check_same_thread=False)
 
-                key TEXT PRIMARY KEY,
+        with self._lock:
 
-                value TEXT NOT NULL,
+            self.conn.execute("PRAGMA journal_mode=WAL")
 
-                category TEXT NOT NULL,
-
-                created_at TEXT NOT NULL,
-
-                updated_at TEXT NOT NULL
-
+            self.conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memories (
+                    key        TEXT PRIMARY KEY,
+                    value      TEXT NOT NULL,
+                    category   TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
             )
-            """
-        )
 
-        self.conn.commit()
+            self.conn.commit()
 
     def save(self, memory: Memory):
+        """Insert, or update value/category/updated_at (created_at is kept)."""
 
-        self.conn.execute(
-            """
-            INSERT OR REPLACE INTO memories
-            (
-                key,
-                value,
-                category,
-                created_at,
-                updated_at
+        with self._lock:
+
+            self.conn.execute(
+                """
+                INSERT INTO memories (key, value, category, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    category = excluded.category,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    memory.key,
+                    memory.value,
+                    memory.category,
+                    memory.created_at.isoformat(),
+                    memory.updated_at.isoformat(),
+                ),
             )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                memory.key,
-                memory.value,
-                memory.category,
-                memory.created_at.isoformat(),
-                memory.updated_at.isoformat(),
-            ),
-        )
 
-        self.conn.commit()
+            self.conn.commit()
 
     def get(self, key: str):
 
-        cursor = self.conn.execute(
-            """
-            SELECT value
-            FROM memories
-            WHERE key = ?
-            """,
-            (key,),
-        )
+        with self._lock:
 
-        row = cursor.fetchone()
+            row = self.conn.execute(
+                "SELECT value FROM memories WHERE key = ?",
+                (key,),
+            ).fetchone()
 
-        if row:
-            return row[0]
-
-        return None
+        return row[0] if row else None
 
     def get_all(self):
+        """Newest first: [(key, value, category), ...]"""
 
-        cursor = self.conn.execute(
-            """
-            SELECT key, value, category
-            FROM memories
-            """
-        )
+        with self._lock:
 
-        return cursor.fetchall()
+            return self.conn.execute(
+                """
+                SELECT key, value, category
+                FROM memories
+                ORDER BY updated_at DESC
+                """
+            ).fetchall()
 
     def delete(self, key: str):
 
-        self.conn.execute(
-            """
-            DELETE FROM memories
-            WHERE key = ?
-            """,
-            (key,),
-        )
+        with self._lock:
 
-        self.conn.commit()
+            self.conn.execute("DELETE FROM memories WHERE key = ?", (key,))
+
+            self.conn.commit()
 
     def close(self):
 
-        self.conn.close()
+        with self._lock:
+            self.conn.close()

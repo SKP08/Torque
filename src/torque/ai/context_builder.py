@@ -4,9 +4,9 @@ from torque.memory.memory_retriever import MemoryRetriever
 
 class ContextBuilder:
 
-    def __init__(self):
+    def __init__(self, retriever=None):
 
-        self.memory = MemoryRetriever()
+        self.memory = retriever or MemoryRetriever()
 
     def build(self, history: list):
 
@@ -24,17 +24,9 @@ class ContextBuilder:
             memory_text = "Known facts about the user:\n"
 
             for memory in memories:
+                memory_text += f"- {memory['key']}: {memory['value']}\n"
 
-                memory_text += (
-                    f"- {memory['key']}: {memory['value']}\n"
-                )
-
-            messages.append(
-                {
-                    "role": "system",
-                    "content": memory_text,
-                }
-            )
+            messages.append({"role": "system", "content": memory_text})
 
         messages.extend(history)
 

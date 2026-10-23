@@ -1,425 +1,177 @@
 import re
+from datetime import datetime
 
 from loguru import logger
 
 from torque.ai.context_builder import ContextBuilder
-from torque.ai.ollama_service import OllamaService
+from torque.ai.ollama_service import OllamaService, OllamaUnavailableError
 from torque.conversation.conversation_policy import ConversationPolicy
+from torque.memory.memory_retriever import MemoryRetriever
 from torque.memory.memory_service import MemoryService
-from torque.system.app_launcher import AppLauncher
+from torque.memory.memory_store import MemoryStore
 from torque.system.background_worker import BackgroundWorker
 from torque.system.system_router import SystemRouter
+from torque.utils.text import to_speech
 from torque.web.search_router import SearchRouter
-from torque.web.web_service import WebService
+
+_TIME = re.compile(
+    r"\bwhat(?:'s| is)?(?: the)?(?: current)? time(?! in\b| at\b| zone\b| for\b)"
+    r"|\bwhat time is it\b|\btell me the time\b|\bcurrent time\b(?! in\b)",
+    re.IGNORECASE,
+)
+
+_DATE = re.compile(
+    r"\bwhat(?:'s| is)?(?: the)?(?: today'?s)? date\b(?! of\b)"
+    r"|\bwhat day is (?:it|today)\b|\bwhat is today\b|\btoday'?s date\b",
+    re.IGNORECASE,
+)
 
 
 class TorqueBrain:
+    """
+    Turns what the user said into a reply, in a fixed order:
 
-    def __init__(self):
+        1. quick local answers (time / date)
+        2. app commands (open / close)
+        3. web search
+        4. the local LLM, with memories
 
-        logger.info(
-            "Initializing Torque Brain..."
-        )
+    Every collaborator can be injected, which keeps routing testable.
+    """
 
-        self.context = ContextBuilder()
-        self.llm = OllamaService()
-        self.memory = MemoryService()
-
-        self.worker = BackgroundWorker()
-
-        self.web = WebService()
-        self.router = SearchRouter()
-
-        self.system_router = SystemRouter()
-        self.app_launcher = AppLauncher()
-
-        # Conversation intelligence layer.
-        self.conversation_policy = (
-            ConversationPolicy()
-        )
-
-        logger.success(
-            "Torque Brain ready."
-        )
-
-    # ==========================================================
-    # COMMAND SPLITTING
-    # ==========================================================
-
-    def _split_system_commands(
+    def __init__(
         self,
-        text: str,
-    ) -> list[str]:
+        llm=None,
+        web=None,
+        memory=None,
+        launcher=None,
+        worker=None,
+        policy=None,
+        system_router=None,
+        search_router=None,
+        context=None,
+    ):
+
+        logger.info("Initializing Torque Brain...")
+
+        store = None
+
+        if memory is None or context is None:
+            store = MemoryStore()
+
+        self.memory = memory or MemoryService(store=store)
+        self.context = context or ContextBuilder(MemoryRetriever(store))
+
+        self.llm = llm or OllamaService()
+        self.worker = worker or BackgroundWorker()
+
+        if web is None:
+            from torque.web.web_service import WebService
+
+            web = WebService()
+
+        self.web = web
+
+        if launcher is None:
+            from torque.system.app_launcher import AppLauncher
+
+            launcher = AppLauncher()
+
+        self.app_launcher = launcher
+
+        self.router = search_router or SearchRouter()
+        self.system_router = system_router or SystemRouter()
+        self.conversation_policy = policy or ConversationPolicy()
+
+        logger.success("Torque Brain ready.")
+
+    # ==========================================================
+    # SYSTEM COMMANDS
+    # ==========================================================
+
+    def _execute_command(self, command: dict) -> str | None:
         """
-        Split multiple system commands from a single request.
-
-        Examples:
-
-            "open chrome, open discord"
-                ->
-                [
-                    "open chrome",
-                    "open discord"
-                ]
-
-            "open chrome and then open discord"
-                ->
-                [
-                    "open chrome",
-                    "open discord"
-                ]
-
-            "open chrome"
-                ->
-                [
-                    "open chrome"
-                ]
-
-        This is intentionally conservative.
-        We only split when the second section clearly
-        starts with another system command.
+        Run one open/close command. Returns what to say, or None when the
+        phrase should not be treated as a command at all (a "weak" verb
+        such as "start talking" that doesn't name a real app).
         """
 
-        if not text:
-            return []
+        action = command["action"]
+        target = command["target"]
 
-        text = text.strip()
+        logger.info(f"System command: {action} '{target}'")
 
-        # ------------------------------------------------------
-        # First split on commas.
-        # ------------------------------------------------------
+        if action == "open":
+            result = self.app_launcher.launch(target)
 
-        comma_parts = [
-            part.strip()
-            for part in re.split(
-                r"\s*,\s*",
-                text,
-            )
-            if part.strip()
-        ]
+        elif action == "close":
+            result = self.app_launcher.close(target)
 
-        if len(comma_parts) > 1:
+        else:
+            return None
 
-            commands = []
+        if not result.success and not command.get("explicit", True):
+            # "start talking to me" -> no such app -> just chat.
+            if "couldn't find" in result.message:
+                return None
 
-            current = comma_parts[0]
+        return result.message
 
-            for part in comma_parts[1:]:
+    def _process_system_commands(self, text: str) -> str | None:
 
-                # Only create a new command if this part
-                # actually begins with a known system command.
-                if self._starts_with_system_command(
-                    part
-                ):
-
-                    commands.append(
-                        current
-                    )
-
-                    current = part
-
-                else:
-
-                    # Otherwise this is probably part of
-                    # the previous command.
-                    current = (
-                        f"{current}, {part}"
-                    )
-
-            commands.append(
-                current
-            )
-
-            if len(commands) > 1:
-
-                return commands
-
-        # ------------------------------------------------------
-        # Handle "and then".
-        # ------------------------------------------------------
-
-        parts = re.split(
-            r"\s+\band then\b\s+",
-            text,
-            flags=re.IGNORECASE,
-        )
-
-        if len(parts) > 1:
-
-            commands = [
-                part.strip()
-                for part in parts
-                if part.strip()
-            ]
-
-            if all(
-                self._starts_with_system_command(
-                    command
-                )
-                for command in commands
-            ):
-
-                return commands
-
-        # ------------------------------------------------------
-        # Handle "then".
-        # ------------------------------------------------------
-
-        parts = re.split(
-            r"\s+\bthen\b\s+",
-            text,
-            flags=re.IGNORECASE,
-        )
-
-        if len(parts) > 1:
-
-            commands = [
-                part.strip()
-                for part in parts
-                if part.strip()
-            ]
-
-            if all(
-                self._starts_with_system_command(
-                    command
-                )
-                for command in commands
-            ):
-
-                return commands
-
-        return [text]
-
-    def _starts_with_system_command(
-        self,
-        text: str,
-    ) -> bool:
-
-        text = text.strip().lower()
-
-        commands = (
-            *SystemRouter.OPEN_COMMANDS,
-            *SystemRouter.CLOSE_COMMANDS,
-        )
-
-        return any(
-            text == command
-            or text.startswith(
-                command + " "
-            )
-            for command in commands
-        )
-    # ==========================================================
-    # SYSTEM COMMAND PROCESSING
-    # ==========================================================
-
-    def _execute_system_command(
-        self,
-        system: dict,
-    ) -> str | None:
+        system = self.system_router.route(text)
 
         if not system:
             return None
 
-        action = system.get("action")
+        if system["action"] != "sequence":
+            return self._execute_command(system)
 
-        target = system.get(
-            "target",
-            "",
-        )
+        results = []
 
-        if target:
-            target = target.strip()
+        for command in system["commands"]:
 
-        # ------------------------------------------------------
-        # OPEN
-        # ------------------------------------------------------
+            reply = self._execute_command(command)
 
-        if action == "open":
+            if reply:
+                results.append(reply)
 
-            if not target:
-                return None
+        return " ".join(results) or None
 
-            logger.info(
-                f"Processing system command: "
-                f"'open {target}'"
-            )
+    # ==========================================================
+    # QUICK LOCAL ANSWERS
+    # ==========================================================
 
-            success = self.app_launcher.launch(
-                target
-            )
+    @staticmethod
+    def _quick_answer(text: str) -> str | None:
 
-            if success:
+        now = datetime.now()
 
-                return (
-                    f"Opening {target}."
-                )
+        if _TIME.search(text):
+            return f"It's {now.strftime('%I:%M %p').lstrip('0')}."
 
-            return (
-                f"I couldn't find "
-                f"{target} "
-                f"on your computer."
-            )
-
-        # ------------------------------------------------------
-        # CLOSE
-        # ------------------------------------------------------
-
-        if action == "close":
-
-            if not target:
-                return None
-
-            logger.info(
-                f"Processing system command: "
-                f"'close {target}'"
-            )
-
-            # Close is not implemented yet.
-            #
-            # Do not pretend that it succeeded.
-            return (
-                f"Closing {target} "
-                f"is not implemented yet."
-            )
+        if _DATE.search(text):
+            return f"Today is {now.strftime('%A, %B')} {now.day}, {now.year}."
 
         return None
 
-    def _process_system_commands(
-        self,
-        text: str,
-    ) -> str | None:
-
-        if not text:
-            return None
-
-        # ------------------------------------------------------
-        # Ask SystemRouter to interpret the complete request.
-        # ------------------------------------------------------
-
-        system = self.system_router.route(
-            text
-        )
-
-        if not system:
-
-            logger.debug(
-                f"Not a system command: "
-                f"'{text}'"
-            )
-
-            return None
-
-        action = system.get(
-            "action"
-        )
-
-        # ------------------------------------------------------
-        # SEQUENCE
-        #
-        # Example:
-        #
-        # "open chrome, open discord"
-        #
-        # SystemRouter returns:
-        #
-        # {
-        #     "action": "sequence",
-        #     "commands": [
-        #         {
-        #             "action": "open",
-        #             "target": "chrome"
-        #         },
-        #         {
-        #             "action": "open",
-        #             "target": "discord"
-        #         }
-        #     ]
-        # }
-        # ------------------------------------------------------
-
-        if action == "sequence":
-
-            commands = system.get(
-                "commands",
-                [],
-            )
-
-            if not commands:
-
-                logger.warning(
-                    "SystemRouter returned an "
-                    "empty command sequence."
-                )
-
-                return None
-
-            logger.info(
-                f"Processing system sequence "
-                f"with {len(commands)} commands."
-            )
-
-            results = []
-
-            for index, command in enumerate(
-                commands,
-                start=1,
-            ):
-
-                logger.info(
-                    f"Executing command "
-                    f"{index}/{len(commands)}: "
-                    f"{command}"
-                )
-
-                result = (
-                    self._execute_system_command(
-                        command
-                    )
-                )
-
-                if result:
-
-                    results.append(
-                        result
-                    )
-
-            if not results:
-
-                return None
-
-            return " ".join(
-                results
-            )
-
-        # ------------------------------------------------------
-        # SINGLE COMMAND
-        # ------------------------------------------------------
-
-        result = (
-            self._execute_system_command(
-                system
-            )
-        )
-
-        return result
-
     # ==========================================================
-    # MAIN BRAIN
+    # MAIN
     # ==========================================================
 
-    def process(
-        self,
-        history: list,
-    ) -> str:
+    def process(self, history: list, on_status=None) -> str | None:
+        """
+        Returns the reply to speak, or None if there is nothing to say.
 
-        logger.info(
-            "Brain processing request..."
-        )
+        on_status(state, message) is called when Torque starts doing
+        something the user should hear about (e.g. "searching").
+        """
+
+        logger.info("Brain processing request...")
 
         last_user = next(
             (
-                msg["content"]
+                msg["content"].strip()
                 for msg in reversed(history)
                 if msg["role"] == "user"
             ),
@@ -427,101 +179,65 @@ class TorqueBrain:
         )
 
         if not last_user:
-
-            logger.warning(
-                "Brain received no user input."
-            )
-
             return "I didn't catch that."
 
-        # ------------------------------------------------------
-        # CONVERSATION ANALYSIS
-        # ------------------------------------------------------
+        policy = self.conversation_policy.analyze_input(last_user)
 
-        policy = (
-            self.conversation_policy.analyze_input(
-                last_user
-            )
-        )
+        if policy["intent"] in ("empty", "acknowledgement"):
+            return None
 
-        effective_text = policy[
-            "effective_text"
-        ]
+        logger.info(f"Conversation intent: {policy['intent']}")
 
-        logger.info(
-            f"Conversation intent: "
-            f"{policy['intent']}"
-        )
+        # 1. Quick local answers.
+        quick = self._quick_answer(last_user)
 
-        if effective_text != last_user:
+        if quick:
+            return quick
 
-            logger.info(
-                "Corrected input: "
-                f"'{last_user}' → "
-                f"'{effective_text}'"
-            )
+        # 2. App commands (routed on the corrected, normalised text).
+        reply = self._process_system_commands(policy["effective_text"])
 
-        # ------------------------------------------------------
-        # SYSTEM COMMANDS
-        # ------------------------------------------------------
+        if reply:
+            return reply
 
-        system_response = (
-            self._process_system_commands(
-                effective_text
-            )
-        )
+        # 3. Web search (on the user's own words).
+        if self.router.needs_web(last_user):
 
-        if system_response:
+            logger.info("Using Web Search...")
 
-            logger.info(
-                "Using System Commands..."
-            )
+            if on_status and self.web.enabled:
+                on_status("searching", self.router.announcement(last_user))
 
-            return system_response
+            result = self.web.search(last_user)
 
-        # ------------------------------------------------------
-        # WEB SEARCH
-        # ------------------------------------------------------
+            self._remember(last_user)
 
-        if self.router.needs_web(
-            effective_text
-        ):
+            return to_speech(result.answer) or "I couldn't find anything on that."
 
-            logger.info(
-                "Using Web Search..."
-            )
+        # 4. The language model.
+        messages = self.context.build(history)
 
-            result = self.web.search(
-                effective_text
-            )
+        try:
+            response = self.llm.chat(messages)
 
-            return result.answer
+        except OllamaUnavailableError:
+            logger.exception("LLM unavailable.")
 
-        # ------------------------------------------------------
-        # LLM
-        # ------------------------------------------------------
+            return "I can't reach my language model. Is Ollama running?"
 
-        messages = self.context.build(
-            history
-        )
+        self._remember(last_user)
 
-        response = self.llm.chat(
-            messages
-        )
+        return response
 
-        # ------------------------------------------------------
-        # MEMORY
-        # ------------------------------------------------------
+    def _remember(self, text: str):
 
-        if effective_text:
+        if self.memory.should_extract(text):
 
             self.worker.submit(
                 "Memory Extraction",
                 self.memory.extract,
-                effective_text,
+                text,
             )
-
-        return response
 
     # ==========================================================
     # SHUTDOWN
@@ -530,5 +246,3 @@ class TorqueBrain:
     def shutdown(self):
 
         self.worker.shutdown()
-
-

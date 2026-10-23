@@ -2,32 +2,50 @@ import os
 
 from dotenv import load_dotenv
 from loguru import logger
-from tavily import TavilyClient
 
+from torque.paths import PROJECT_ROOT
 from torque.web.internet_service import InternetService
 from torque.web.search_result import SearchResult
 
-load_dotenv()
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class WebService:
+    """
+    Web search through Tavily. Missing configuration disables search
+    instead of stopping Torque from starting.
+    """
 
-    def __init__(self):
+    def __init__(self, client=None):
 
         self.api_key = os.getenv("TAVILY_API_KEY")
+        self.client = client
 
-        if not self.api_key:
-            raise RuntimeError(
-                "TAVILY_API_KEY not found in .env"
+        if self.client is None and self.api_key:
+            from tavily import TavilyClient
+
+            self.client = TavilyClient(api_key=self.api_key)
+
+        if self.client is None:
+            logger.warning(
+                "TAVILY_API_KEY not set; web search is disabled. "
+                "Add it to .env to enable it."
             )
+        else:
+            logger.success("Web Service ready.")
 
-        self.client = TavilyClient(
-            api_key=self.api_key
-        )
-
-        logger.success("Web Service ready.")
+    @property
+    def enabled(self) -> bool:
+        return self.client is not None
 
     def search(self, query: str) -> SearchResult:
+
+        if not self.enabled:
+            return SearchResult(
+                answer="Web search isn't set up yet. Add your Tavily key to the .env file.",
+                sources=[],
+                success=False,
+            )
 
         if not InternetService.connected():
 
@@ -42,7 +60,6 @@ class WebService:
         logger.info(f"Searching web: {query}")
 
         try:
-
             response = self.client.search(
                 query=query,
                 search_depth="advanced",
@@ -56,28 +73,24 @@ class WebService:
             results = response.get("results", [])
 
             if not answer:
-
                 answer = "\n\n".join(
-                    result.get("content", "")
-                    for result in results
+                    result.get("content", "") for result in results[:2]
                 )
 
-            sources = [
-                result.get("url")
-                for result in results
-                if result.get("url")
-            ]
+            sources = [r.get("url") for r in results if r.get("url")]
+
+            if not answer:
+                return SearchResult(
+                    answer="I searched, but didn't find a clear answer.",
+                    sources=sources,
+                    success=False,
+                )
 
             logger.success("Web search completed.")
 
-            return SearchResult(
-                answer=answer,
-                sources=sources,
-                success=True,
-            )
+            return SearchResult(answer=answer, sources=sources, success=True)
 
-        except Exception:
-
+        except Exception:  # noqa: BLE001
             logger.exception("Web search failed.")
 
             return SearchResult(
