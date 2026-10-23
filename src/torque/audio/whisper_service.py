@@ -1,34 +1,111 @@
-from faster_whisper import WhisperModel
+import os
+
+import numpy as np
 from loguru import logger
 
 from torque.system.config_service import load_config
 
 SAMPLE_RATE = 16000
 
-# Nudges the recogniser toward words Torque actually hears.
-INITIAL_PROMPT = "Torque. Open Chrome. Launch Spotify. Close Discord. Visual Studio Code."
+# Nudges the recogniser to spell the name correctly. Deliberately just the
+# name: Whisper sometimes "hallucinates" its own prompt from background
+# noise, and a prompt like "Hey Torque. Open Chrome." could then trigger a
+# real command by itself.
+INITIAL_PROMPT = "Torque."
 
 # Whisper tends to invent these from near-silence.
-HALLUCINATIONS = {"you", "thank you", "thanks", "thanks for watching", "bye"}
+HALLUCINATIONS = {"you", "thank you", "thanks", "thanks for watching", "bye", "bye bye"}
+
+
+def _cpu_threads() -> int:
+
+    try:
+        import psutil
+
+        cores = psutil.cpu_count(logical=False) or os.cpu_count() or 4
+
+    except ImportError:
+        cores = os.cpu_count() or 4
+
+    return max(2, min(8, cores))
 
 
 class WhisperService:
+    """
+    faster-whisper tuned for short voice commands: English-only model,
+    greedy decoding, no second VAD pass (the microphone already trimmed the
+    audio), no timestamps. A throw-away transcription at start-up pays the
+    one-off initialisation cost before the first real request.
+    """
 
     MIN_SECONDS = 0.3
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, model_name=None, device=None):
 
-        model_name = model or load_config()["whisper_model"]
+        config = load_config()
 
-        logger.info(f"Loading Whisper model '{model_name}'...")
+        self.model_name = model_name or config["whisper_model"]
+        self.device = "injected"
 
-        self.model = WhisperModel(
-            model_name,
-            device="cpu",
-            compute_type="int8",
+        if model is not None:
+            self.model = model
+            return
+
+        self.model = self._load(self.model_name, device or config["whisper_device"])
+
+    def _load(self, name: str, device: str):
+
+        from faster_whisper import WhisperModel
+
+        attempts = []
+
+        if device in ("cuda", "auto"):
+            attempts.append(("cuda", "float16"))
+
+        attempts.append(("cpu", "int8"))
+
+        logger.info(f"Loading Whisper model '{name}'...")
+
+        last_error = None
+
+        for dev, compute in attempts:
+
+            try:
+                model = WhisperModel(
+                    name,
+                    device=dev,
+                    compute_type=compute,
+                    cpu_threads=_cpu_threads(),
+                )
+
+                self._warm_up(model)
+
+                self.device = dev
+
+                logger.success(f"Whisper '{name}' ready on {dev}.")
+
+                return model
+
+            except Exception as error:  # noqa: BLE001
+                last_error = error
+                logger.warning(f"Whisper on {dev} failed ({error}).")
+
+        raise RuntimeError(
+            f"Could not load the Whisper model '{name}'. The first run needs "
+            f"internet access to download it. ({last_error})"
+        ) from last_error
+
+    @staticmethod
+    def _warm_up(model):
+
+        segments, _ = model.transcribe(
+            np.zeros(SAMPLE_RATE, dtype=np.float32),
+            language="en",
+            beam_size=1,
+            without_timestamps=True,
         )
 
-        logger.success("Whisper model loaded.")
+        list(segments)       # transcription is lazy: actually run it
 
     def transcribe(self, audio) -> str:
         """Transcribe float32 16 kHz mono audio (numpy array)."""
@@ -38,12 +115,15 @@ class WhisperService:
         if duration < self.MIN_SECONDS:
             return ""
 
-        segments, info = self.model.transcribe(
+        segments, _ = self.model.transcribe(
             audio,
             language="en",
-            vad_filter=True,
-            beam_size=3,
+            beam_size=1,
+            best_of=1,
+            temperature=0.0,
+            vad_filter=False,
             condition_on_previous_text=False,
+            without_timestamps=True,
             initial_prompt=INITIAL_PROMPT,
         )
 
@@ -60,9 +140,7 @@ class WhisperService:
         text = " ".join(kept).strip()
 
         if duration < 1.5 and text.lower().strip(" .,!?") in HALLUCINATIONS:
-            logger.debug(f"Dropped likely hallucination: '{text}'")
+            logger.debug("Dropped likely hallucination.")
             return ""
-
-        logger.success(f"Recognized: {text}")
 
         return text

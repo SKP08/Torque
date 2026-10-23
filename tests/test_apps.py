@@ -20,7 +20,7 @@ class FakeScanner:
 
 @pytest.fixture
 def matcher():
-    m = AppMatcher(AppRegistry(FakeScanner()))
+    m = AppMatcher(AppRegistry(FakeScanner(), cache_path=None))
     m.load()
     return m
 

@@ -11,11 +11,22 @@ class FakeLLM:
         self.reply = reply
         self.calls = []
 
-    def chat(self, messages):
+    truncated = False
+
+    def chat_stream(self, messages):
         self.calls.append(messages)
         if isinstance(self.reply, Exception):
             raise self.reply
-        return self.reply
+        # Deliver in small pieces, like a real token stream.
+        words = self.reply.split(" ")
+        for i, word in enumerate(words):
+            yield word if i == 0 else " " + word
+
+    def chat(self, messages):
+        return "".join(self.chat_stream(messages))
+
+    def warm_up(self):
+        pass
 
 
 class FakeWeb:
@@ -112,7 +123,8 @@ def test_close_command(parts):
 def test_web_search_announces_and_speaks_clean_text(parts):
     statuses = []
     reply = ask(parts, "what's the weather in toronto", on_status=lambda s, m: statuses.append((s, m)))
-    assert statuses == [("searching", "Let me check the latest weather.")]
+    assert statuses == [("searching", "Searching the web...")]
+    assert reply.startswith("Let me check the latest weather.")
     assert parts["web"].queries == ["what's the weather in toronto"]
     assert "*" not in reply and "http" not in reply
     assert parts["llm"].calls == []
@@ -135,6 +147,14 @@ def test_time_and_date_are_answered_locally(parts):
     assert ask(parts, "what time is it").startswith("It's ")
     assert ask(parts, "what's the date today").startswith("Today is ")
     assert parts["llm"].calls == [] and parts["web"].queries == []
+
+
+def test_streaming_yields_whole_sentences_in_order(parts):
+    parts["llm"] = FakeLLM("Python is a language. It is easy to learn. Try it today.")
+    brain = TorqueBrain(**parts)
+    sentences = list(brain.process_stream([{"role": "user", "content": "tell me about python"}]))
+    assert " ".join(sentences) == "Python is a language. It is easy to learn. Try it today."
+    assert len(sentences) >= 2
 
 
 def test_acknowledgements_get_no_reply(parts):

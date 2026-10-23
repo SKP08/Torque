@@ -29,15 +29,13 @@ def test_preroll_keeps_audio_before_vad_fires():
 
 
 def test_ends_after_grace_period():
-    clock = Clock()
-    c = UtteranceCollector(clock=clock, grace_seconds=1.0)
+    # Grace is measured in audio time: 1.0 s = ~31 blocks of 512 samples.
+    c = UtteranceCollector(clock=Clock(), grace_seconds=1.0)
     c.feed(block(), "start")
     c.feed(block(), None)
     assert c.feed(block(), "end") is False
-    clock.t = 0.5
-    assert c.feed(block(), None) is False
-    clock.t = 1.1
-    assert c.feed(block(), None) is True
+    assert not any(c.feed(block(), None) for _ in range(25))   # ~0.8 s
+    assert any(c.feed(block(), None) for _ in range(10))       # past 1.0 s
 
 
 def test_continuation_within_grace_keeps_the_pause():

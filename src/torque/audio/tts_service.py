@@ -77,6 +77,14 @@ class TTSService:
 
         return np.concatenate(chunks)
 
+    def warm_up(self):
+        """Run one throw-away synthesis so the first real reply is quick."""
+
+        try:
+            self._synthesize("Ready.")
+        except Exception:  # noqa: BLE001
+            logger.debug("TTS warm-up failed.", exc_info=True)
+
     def _produce(self, sentences, audio_queue):
         """Synthesis thread: sentence audio -> queue; None marks the end."""
 
@@ -99,6 +107,14 @@ class TTSService:
             logger.exception("Speech synthesis failed.")
 
         finally:
+            close = getattr(sentences, "close", None)
+
+            if close:
+                try:
+                    close()          # stops an LLM stream that is still generating
+                except Exception:  # noqa: BLE001
+                    logger.debug("Could not close sentence source.", exc_info=True)
+
             while True:
                 try:
                     audio_queue.put(None, timeout=0.1)
@@ -107,17 +123,25 @@ class TTSService:
                     if self._stop.is_set():
                         break
 
-    def speak(self, text: str) -> bool:
+    def speak(self, text) -> bool:
         """
-        Speak `text`. Returns True if it finished, False if interrupted.
+        Speak `text` - a string, or any iterable of sentences (such as a
+        generator that is still producing them, so speech can begin before
+        the whole reply exists). Returns True if it finished, False if
+        interrupted.
         """
 
-        sentences = split_sentences(text)
+        if isinstance(text, str):
 
-        if not sentences:
-            return True
+            sentences = split_sentences(text)
 
-        logger.info(f"Speaking: {text}")
+            if not sentences:
+                return True
+
+            logger.debug(f"Speaking: {text}")
+
+        else:
+            sentences = text
 
         self._stop.clear()
 

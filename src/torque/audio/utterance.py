@@ -15,6 +15,10 @@ class UtteranceCollector:
         speaking  VAD says the user is talking
         grace     VAD said speech ended; wait briefly in case they continue
 
+    The grace period is measured in AUDIO time (samples received), not wall
+    time, so a backlog of buffered blocks processed in a hurry is judged
+    correctly. A wall-clock limit still ends it if blocks stop arriving.
+
     Feed it blocks with feed(block, event) where event is "start", "end" or
     None. It returns True when the utterance is complete.
     """
@@ -28,13 +32,26 @@ class UtteranceCollector:
         sample_rate=16000,
         block_size=512,
         preroll_seconds=0.4,
-        grace_seconds=1.0,
+        grace_seconds=0.6,
+        short_grace_seconds=None,
+        short_utterance_seconds=2.5,
         max_seconds=30.0,
         clock=time.monotonic,
     ):
+        """
+        grace_seconds        extra silence to wait after a LONG utterance
+        short_grace_seconds  ...after a SHORT one (a quick command is almost
+                             always complete, so answer sooner); defaults to
+                             grace_seconds
+        """
 
         self.sample_rate = sample_rate
         self.grace_seconds = grace_seconds
+        self.short_grace_seconds = (
+            grace_seconds if short_grace_seconds is None else short_grace_seconds
+        )
+        self.short_utterance_seconds = short_utterance_seconds
+        self._grace_limit = grace_seconds
         self.max_samples = int(max_seconds * sample_rate)
         self._clock = clock
 
@@ -47,6 +64,7 @@ class UtteranceCollector:
         self._frames = []
         self._pending = []
         self._samples = 0
+        self._grace_samples = 0
         self._grace_started = None
 
     @property
@@ -72,7 +90,13 @@ class UtteranceCollector:
 
             if event == "end":
                 self.state = self.GRACE
+                self._grace_limit = (
+                    self.short_grace_seconds
+                    if self.duration <= self.short_utterance_seconds
+                    else self.grace_seconds
+                )
                 self._grace_started = self._clock()
+                self._grace_samples = 0
                 self._pending = []
 
             return self._too_long()
@@ -92,16 +116,23 @@ class UtteranceCollector:
             return self._too_long()
 
         self._pending.append(block)
+        self._grace_samples += len(block)
 
         return self.expired()
 
     def expired(self) -> bool:
         """True once the post-speech grace period has run out."""
 
+        if self.state != self.GRACE:
+            return False
+
+        if self._grace_samples / self.sample_rate >= self._grace_limit:
+            return True
+
+        # Blocks stopped arriving: fall back to the wall clock.
         return (
-            self.state == self.GRACE
-            and self._grace_started is not None
-            and self._clock() - self._grace_started >= self.grace_seconds
+            self._grace_started is not None
+            and self._clock() - self._grace_started >= self._grace_limit + 0.5
         )
 
     def _append(self, block):

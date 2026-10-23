@@ -1,4 +1,5 @@
 import re
+from collections.abc import Iterator
 from datetime import datetime
 
 from loguru import logger
@@ -11,7 +12,7 @@ from torque.memory.memory_service import MemoryService
 from torque.memory.memory_store import MemoryStore
 from torque.system.background_worker import BackgroundWorker
 from torque.system.system_router import SystemRouter
-from torque.utils.text import to_speech
+from torque.utils.text import SentenceChunker, split_sentences, to_speech
 from torque.web.search_router import SearchRouter
 
 _TIME = re.compile(
@@ -35,6 +36,9 @@ class TorqueBrain:
         2. app commands (open / close)
         3. web search
         4. the local LLM, with memories
+
+    The reply is produced as a stream of sentences (process_stream) so the
+    first one can be spoken while the rest is still being generated.
 
     Every collaborator can be injected, which keeps routing testable.
     """
@@ -62,8 +66,13 @@ class TorqueBrain:
         self.memory = memory or MemoryService(store=store)
         self.context = context or ContextBuilder(MemoryRetriever(store))
 
+        warm = llm is None
+
         self.llm = llm or OllamaService()
         self.worker = worker or BackgroundWorker()
+
+        if warm:
+            self.llm.warm_up()
 
         if web is None:
             from torque.web.web_service import WebService
@@ -159,12 +168,12 @@ class TorqueBrain:
     # MAIN
     # ==========================================================
 
-    def process(self, history: list, on_status=None) -> str | None:
+    def process_stream(self, history: list, on_status=None) -> Iterator[str]:
         """
-        Returns the reply to speak, or None if there is nothing to say.
+        Yield the reply one speakable sentence at a time (nothing if there is
+        nothing to say).
 
-        on_status(state, message) is called when Torque starts doing
-        something the user should hear about (e.g. "searching").
+        on_status(state, message) reports UI state changes, e.g. "searching".
         """
 
         logger.info("Brain processing request...")
@@ -179,12 +188,13 @@ class TorqueBrain:
         )
 
         if not last_user:
-            return "I didn't catch that."
+            yield "I didn't catch that."
+            return
 
         policy = self.conversation_policy.analyze_input(last_user)
 
         if policy["intent"] in ("empty", "acknowledgement"):
-            return None
+            return
 
         logger.info(f"Conversation intent: {policy['intent']}")
 
@@ -192,42 +202,69 @@ class TorqueBrain:
         quick = self._quick_answer(last_user)
 
         if quick:
-            return quick
+            yield quick
+            return
 
         # 2. App commands (routed on the corrected, normalised text).
         reply = self._process_system_commands(policy["effective_text"])
 
         if reply:
-            return reply
+            yield from split_sentences(reply)
+            return
 
         # 3. Web search (on the user's own words).
         if self.router.needs_web(last_user):
 
             logger.info("Using Web Search...")
 
-            if on_status and self.web.enabled:
-                on_status("searching", self.router.announcement(last_user))
+            if self.web.enabled:
+                # Said aloud while the search runs.
+                yield self.router.announcement(last_user)
+
+                if on_status:
+                    on_status("searching", "Searching the web...")
 
             result = self.web.search(last_user)
 
             self._remember(last_user)
 
-            return to_speech(result.answer) or "I couldn't find anything on that."
+            yield from split_sentences(
+                to_speech(result.answer) or "I couldn't find anything on that."
+            )
 
-        # 4. The language model.
+            return
+
+        # 4. The language model, streamed sentence by sentence.
+        yield from self._chat(history, last_user)
+
+    def _chat(self, history: list, last_user: str) -> Iterator[str]:
+
         messages = self.context.build(history)
 
+        chunker = SentenceChunker()
+
         try:
-            response = self.llm.chat(messages)
+            for piece in self.llm.chat_stream(messages):
+                yield from chunker.feed(piece)
 
         except OllamaUnavailableError:
             logger.exception("LLM unavailable.")
 
-            return "I can't reach my language model. Is Ollama running?"
+            if not chunker.emitted:
+                yield "I can't reach my language model. Is Ollama running?"
+
+            return
+
+        yield from chunker.finish(truncated=getattr(self.llm, "truncated", False))
 
         self._remember(last_user)
 
-        return response
+    def process(self, history: list, on_status=None) -> str | None:
+        """The whole reply as one string (None if there is nothing to say)."""
+
+        reply = " ".join(self.process_stream(history, on_status=on_status)).strip()
+
+        return reply or None
 
     def _remember(self, text: str):
 

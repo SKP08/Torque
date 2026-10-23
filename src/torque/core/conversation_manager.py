@@ -52,17 +52,20 @@ class ConversationManager:
     # LISTENING
     # ==========================================================
 
-    def listen(self, timeout=None):
+    def listen(self, timeout=None, flush=True):
         """
         Returns the transcript, "" if speech was heard but nothing was
         recognised, or None if nobody spoke before the timeout / the
         conversation was cancelled.
+
+        flush=True discards audio captured before this call (Torque's own
+        voice); pass False when listening for the rest of a sentence.
         """
 
         if not self.active:
             return None
 
-        return self.speech.listen(timeout=timeout)
+        return self.speech.listen(timeout=timeout, flush=flush)
 
     # ==========================================================
     # HISTORY

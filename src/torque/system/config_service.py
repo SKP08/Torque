@@ -14,20 +14,30 @@ DEFAULT_CONFIG = {
     # Input
     "hotkey": "ctrl+space",
     "hotkey_suppress": False,
+    "wake_word_enabled": True,
+    "chime_enabled": True,
+
+    # Conversation timing (seconds)
     "listen_timeout": 10.0,
+    "followup_timeout": 7.0,
+    "end_of_speech_silence": 0.9,
+    "end_of_speech_silence_short": 0.5,
 
     # Models
     "llm_model": "qwen2.5:3b",
     "llm_num_predict": 200,
-    "whisper_model": "base",
+    "llm_num_ctx": 2048,
+    "whisper_model": "base.en",
+    "whisper_device": "cpu",
     "piper_voice": "en_US-lessac-medium",
+    "web_search_depth": "basic",
 
     # Transport / UI
     "ws_host": "localhost",
     "ws_port": 8765,
-    "ui_autostart": True,
-    "ui_window": True,
-    "ui_url": "http://localhost:5173",
+    "ui_mode": "overlay",
+    "ui_port": 5174,
+    "overlay_position": "bottom",
     "tray_enabled": True,
 }
 

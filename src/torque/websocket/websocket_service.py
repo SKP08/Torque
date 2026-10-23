@@ -199,11 +199,23 @@ class WebSocketService(Service):
         if isinstance(data, dict) and "state" in data:
             self.last_message = message
 
+        self._broadcast_text(message)
+
+    def send_level(self, level: float):
+        """Microphone level for animations. Not replayed to new clients."""
+
+        self._broadcast_text(json.dumps({"level": round(level, 3)}))
+
+    def _broadcast_text(self, message: str):
+
         if not self.loop or self.loop.is_closed() or not self.clients:
             return
 
-        self.loop.call_soon_threadsafe(
-            broadcast,
-            set(self.clients),
-            message,
-        )
+        try:
+            self.loop.call_soon_threadsafe(
+                broadcast,
+                set(self.clients),
+                message,
+            )
+        except RuntimeError:
+            pass          # loop closed while shutting down
