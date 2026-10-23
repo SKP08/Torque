@@ -65,6 +65,33 @@ PC control (Windows): "volume up / down", "set the volume to 30", "mute",
 "brightness up", "set brightness to 40" (laptop screens). Hard-to-undo actions
 (shut down, restart, sleep) ask first and only run after you say "yes".
 
+**Security copilot** (read-only, about this PC): "what ports are open", "what's
+using my network", "what's using my CPU / memory", "any suspicious programs",
+"who's on my Wi-Fi". Suspicious-program checks are heuristics (programs running
+from Temp/Downloads, system names outside the Windows folder): a lead to check,
+not a malware scan, and Torque says so.
+
+**Screen awareness:** "what's this error?", "explain this", "summarize this
+page", "what's on my screen". Torque screenshots, reads the text with local OCR
+and the local model explains it. Needs the OCR add-on once: `uv sync --extra screen`.
+Screen text is never logged or sent anywhere.
+
+**File tasks (local agent):** "unzip my latest download and copy it to D: in a
+folder called Projects", "find my resume file", "make a folder called School on
+the desktop". Runs a small local model (`ollama pull qwen3:4b`, one-time) that
+calls file tools and reads each result, e.g. if the folder doesn't exist it
+makes it first. It never deletes or overwrites, won't touch system folders, and
+stops if it gets stuck. Weaker than a big model: keep requests explicit.
+
+**Phone access** (off by default, `phone_enabled`): open Torque from your phone's
+browser. Start Torque, copy the link it prints (the secret token is in the
+`#fragment`), open it on the phone. Safety: a token is required, repeated wrong
+tokens lock the address out, power actions (shut down, restart, sleep) are
+refused from the phone, and replies are not spoken on the PC. The connection is
+plain HTTP, so on networks you don't trust use [Tailscale](https://tailscale.com)
+and set `phone_host` to your Tailscale address. Delete `data/phone_token.txt` to
+rotate the token. Typing works everywhere; use your phone keyboard's mic to talk.
+
 Try: "open chrome", "open spotify and then open discord", "close discord",
 "what time is it", "what's the weather in Toronto", "my laptop has 32 GB of RAM"
 (remembered), then "how much RAM does my laptop have".
@@ -80,6 +107,12 @@ Try: "open chrome", "open spotify and then open discord", "close discord",
 | `wake_word_enabled` | `true` | Listen for "Hey Torque" (needs the always-on mic, see Notes) |
 | `chime_enabled` | `true` | Soft chime when Torque starts listening |
 | `pc_control_enabled` | `true` | Volume/media/window/screenshot/power skills |
+| `security_skills_enabled` | `true` | Ports / network / process questions |
+| `screen_enabled` | `true` | "What's this error?" (needs `uv sync --extra screen`) |
+| `agent_enabled` | `true` | Local tool-calling agent for file tasks |
+| `agent_model` / `agent_max_steps` | `qwen3:4b` / `8` | Agent model and step limit |
+| `phone_enabled` | `false` | Phone access (see above) |
+| `phone_host` / `phone_port` | `0.0.0.0` / `8766` | Where the phone page listens |
 | `listen_timeout` | `10.0` | Seconds of silence before the first turn is abandoned |
 | `followup_timeout` | `7.0` | Seconds to wait for a follow-up before the conversation ends |
 | `end_of_speech_silence` | `0.9` | Pause that ends a long sentence (lower = snappier) |
@@ -105,7 +138,10 @@ src/torque/
   main.py              entry point
   paths.py             every filesystem path (anchored to the repo, not the CWD)
   core/                runtime, assistant controller (conversation loop), conversation manager
-  skills/              PC-control skills with permission tiers (safe / confirm) and the Windows backend
+  skills/              PC-control + security skills, permission tiers (safe / confirm), Windows backend
+  screen/              screenshot -> OCR -> local LLM
+  agent/               tool-calling loop, file tools, task routing
+  phone/               phone web page + token-authenticated WebSocket
   system/              services (config, logging, db, hotkey), command router, app matching/launching
   ai/                  brain (routing), Ollama client, system prompt, context builder
   conversation/        wake word, speech analysis, conversation policy, stop phrases
@@ -121,11 +157,13 @@ tests/                 pytest suite
 ### How a request flows (`TorqueBrain.process_stream`)
 
 1. Time/date questions are answered locally.
-2. PC-control skills (`skills/`); a pending "are you sure?" gets the next sentence first.
-3. App commands (`open`, `launch`, `close`; `start`, `run`, `quit`, `exit` only
+2. PC-control and security skills (`skills/`); a pending "are you sure?" gets the next sentence first.
+3. Screen questions (`screen/`).
+4. File tasks go to the agent (`agent/`).
+5. App commands (`open`, `launch`, `close`; `start`, `run`, `quit`, `exit` only
    when they name a real app, so "quit smoking tips" is just a sentence).
-4. Web search for news, weather, scores, prices, "latest ..." questions.
-5. Otherwise the local LLM, with relevant memories added to the prompt.
+6. Web search for news, weather, scores, prices, "latest ..." questions.
+7. Otherwise the local LLM, with relevant memories added to the prompt.
 
 ### WebSocket protocol
 
