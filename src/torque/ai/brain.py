@@ -5,6 +5,7 @@ from datetime import datetime
 from loguru import logger
 
 from torque.agent.router import wants_agent
+from torque.hud.entities import is_info_question
 from torque.ai.context_builder import ContextBuilder
 from torque.ai.ollama_service import OllamaService, OllamaUnavailableError
 from torque.conversation.conversation_policy import ConversationPolicy
@@ -63,6 +64,7 @@ class TorqueBrain:
         skills=None,
         screen=None,
         agent=None,
+        info=None,
     ):
 
         logger.info("Initializing Torque Brain...")
@@ -116,6 +118,15 @@ class TorqueBrain:
 
         self.agent = agent or None
 
+        if info is None and load_config()["hud_enabled"]:
+            from torque.hud.info import InfoService
+            from torque.hud.wiki import WikiClient
+            from torque.paths import HUD_CACHE
+
+            info = InfoService(WikiClient(HUD_CACHE))
+
+        self.info = info or None
+
         self.router = search_router or SearchRouter()
         self.system_router = system_router or SystemRouter()
         self.conversation_policy = policy or ConversationPolicy()
@@ -140,6 +151,11 @@ class TorqueBrain:
             from torque.skills.pc_control import build_pc_skills
 
             skills += build_pc_skills(default_backend())
+
+        if config["hud_enabled"]:
+            from torque.skills.hud_skills import build_hud_skills
+
+            skills += build_hud_skills()
 
         if config["security_skills_enabled"]:
             from torque.skills.security import build_security_skills
@@ -228,12 +244,13 @@ class TorqueBrain:
     # MAIN
     # ==========================================================
 
-    def process_stream(self, history: list, on_status=None, remote: bool = False) -> Iterator[str]:
+    def process_stream(self, history: list, on_status=None, remote: bool = False, on_hud=None) -> Iterator[str]:
         """
         Yield the reply one speakable sentence at a time (nothing if there is
         nothing to say).
 
         on_status(state, message) reports UI state changes, e.g. "searching".
+        on_hud(payload) shows an on-screen panel (info, status, or {"kind": "clear"}).
         remote=True marks a request from the phone: power actions are refused.
         """
 
@@ -277,7 +294,7 @@ class TorqueBrain:
 
         # 2. PC control: volume, media, windows, screenshot, power...
         if self.skills:
-            reply = self.skills.handle(last_user, allow_confirm=not remote)
+            reply = self.skills.handle(last_user, allow_confirm=not remote, hud=None if remote else on_hud)
 
             if reply:
                 yield from split_sentences(reply)
@@ -322,14 +339,43 @@ class TorqueBrain:
 
             self._remember(last_user)
 
-            yield from split_sentences(
-                to_speech(result.answer) or "I couldn't find anything on that."
+            yield from self._with_hud(
+                iter(split_sentences(to_speech(result.answer) or "I couldn't find anything on that.")),
+                last_user, on_hud, remote,
             )
 
             return
 
         # 7. The language model, streamed sentence by sentence.
-        yield from self._chat(history, last_user)
+        yield from self._with_hud(self._chat(history, last_user), last_user, on_hud, remote)
+
+    def _with_hud(self, sentences, question, on_hud, remote) -> Iterator[str]:
+        """
+        Pass sentences through unchanged; for factual questions also build
+        and show the info panels from the finished answer, in the background
+        so speech is never delayed.
+        """
+
+        show = bool(self.info and on_hud and not remote and is_info_question(question))
+
+        if show:
+            self.worker.submit("HUD prefetch", self.info.prefetch, question)
+
+        spoken = []
+
+        for sentence in sentences:
+            spoken.append(sentence)
+            yield sentence
+
+        if show and spoken:
+            self.worker.submit("HUD panels", self._show_info, question, " ".join(spoken), on_hud)
+
+    def _show_info(self, question, answer, on_hud):
+
+        payload = self.info.build(question, answer)
+
+        if payload:
+            on_hud(payload)
 
     def _run_agent(self, request: str, on_status) -> Iterator[str]:
 

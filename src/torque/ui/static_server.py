@@ -1,6 +1,9 @@
 import functools
 import http.server
+import posixpath
 import threading
+import urllib.parse
+from pathlib import Path
 
 from loguru import logger
 
@@ -23,6 +26,25 @@ MIME_TYPES = {
 
 class _Handler(http.server.SimpleHTTPRequestHandler):
 
+    mounts = {}          # {"/cache": Path}: extra folders served under a prefix
+
+    def translate_path(self, path):
+
+        path = path.split("?", 1)[0].split("#", 1)[0]
+
+        for prefix, folder in self.mounts.items():
+
+            if path == prefix or path.startswith(prefix + "/"):
+
+                parts = [
+                    part for part in posixpath.normpath(urllib.parse.unquote(path[len(prefix):])).split("/")
+                    if part not in ("", ".", "..")
+                ]
+
+                return str(Path(folder).joinpath(*parts))
+
+        return super().translate_path(path)
+
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, **MIME_TYPES}
 
     def end_headers(self):
@@ -37,9 +59,10 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
 class StaticServer:
     """Serves the built UI (torque-ui/dist) on 127.0.0.1 only."""
 
-    def __init__(self, directory, port, host="127.0.0.1"):
+    def __init__(self, directory, port, host="127.0.0.1", mounts=None):
 
         self.directory = str(directory)
+        self.mounts = dict(mounts or {})
         self.host = host
         self.port = port
         self._server = None
@@ -51,7 +74,9 @@ class StaticServer:
 
     def start(self) -> bool:
 
-        handler = functools.partial(_Handler, directory=self.directory)
+        handler_class = type("Handler", (_Handler,), {"mounts": self.mounts})
+
+        handler = functools.partial(handler_class, directory=self.directory)
 
         try:
             self._server = http.server.ThreadingHTTPServer((self.host, self.port), handler)

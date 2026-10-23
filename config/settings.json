@@ -10,6 +10,8 @@
     "pc_control_enabled": true,
     "security_skills_enabled": true,
     "screen_enabled": true,
+    "hud_enabled": true,
+    "hud_hold_seconds": 10,
     "agent_enabled": true,
     "agent_model": "qwen3:4b",
     "agent_max_steps": 8,

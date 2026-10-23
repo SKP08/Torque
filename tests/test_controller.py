@@ -49,7 +49,7 @@ class FakeBrain:
         self.replies = replies or {}
         self.shut = False
 
-    def process_stream(self, history, on_status=None):
+    def process_stream(self, history, on_status=None, **_):
         text = history[-1]["content"]
         if "weather" in text:
             # The real brain yields its search announcement as a sentence.

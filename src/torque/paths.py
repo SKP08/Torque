@@ -19,6 +19,7 @@ CONFIG_PATH = CONFIG_DIR / "settings.json"
 MEMORY_DB = DATA_DIR / "memory.db"
 APPS_CACHE = DATA_DIR / "apps.json"
 PHONE_TOKEN = DATA_DIR / "phone_token.txt"
+HUD_CACHE = DATA_DIR / "hud_cache"
 
 
 def ensure_dirs() -> None:

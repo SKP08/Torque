@@ -265,7 +265,7 @@ class FakeAgent:
 
 def brain_with(agent):
     return TorqueBrain(llm=FakeLLM(), web=FakeWeb(), launcher=FakeLauncher(), memory=FakeMemory(),
-                       context=FakeContext(), worker=InlineWorker(), skills=False, screen=False, agent=agent)
+                       context=FakeContext(), worker=InlineWorker(), skills=False, screen=False, agent=agent, info=False)
 
 
 def test_brain_sends_file_tasks_to_the_agent():

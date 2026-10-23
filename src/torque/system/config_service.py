@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
     "pc_control_enabled": True,
     "security_skills_enabled": True,
     "screen_enabled": True,
+    "hud_enabled": True,
+    "hud_hold_seconds": 10,
     "agent_enabled": True,
     "agent_model": "qwen3:4b",
     "agent_max_steps": 8,

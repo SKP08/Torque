@@ -180,6 +180,9 @@ class AssistantController:
         elif kind == "activate":
             self.toggle()
 
+        elif kind == "dismiss":
+            self._send_hud({"kind": "clear"})
+
         elif kind == "text":
             text = str(message.get("text", "")).strip()
 
@@ -459,6 +462,7 @@ class AssistantController:
                 for sentence in self.brain.process_stream(
                     self.conversation.get_history(),
                     on_status=self._send,
+                    on_hud=self._send_hud,
                 ):
                     if self._cancelled.is_set():
                         return
@@ -545,6 +549,14 @@ class AssistantController:
 
         if self.ws:
             self.ws.send({"state": state, "message": message, **extra})
+
+    def _send_hud(self, payload: dict):
+        """Show (or clear) the holographic panels."""
+
+        if not self.ws:
+            return
+
+        self.ws.send({"hud": None if payload.get("kind") == "clear" else payload})
 
     def _on_level(self, rms: float):
         """Microphone loudness for the UI's listening animation."""

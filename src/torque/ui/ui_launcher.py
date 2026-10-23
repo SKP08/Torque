@@ -7,7 +7,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from torque.paths import LOGS_DIR, UI_DIR
+from torque.paths import HUD_CACHE, LOGS_DIR, UI_DIR
 from torque.system.config_service import load_config
 from torque.ui.static_server import StaticServer
 
@@ -80,7 +80,9 @@ class UILauncher:
         if not self._ensure_built():
             return
 
-        self.server = StaticServer(UI_DIR / "dist", config["ui_port"])
+        self.server = StaticServer(
+            UI_DIR / "dist", config["ui_port"], mounts={"/cache": HUD_CACHE}
+        )
 
         if not self.server.start():
             self.server = None

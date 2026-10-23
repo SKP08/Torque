@@ -21,3 +21,4 @@ class ActionResult:
 
     success: bool
     message: str
+    hud: dict | None = None      # optional on-screen panel to show with the spoken message

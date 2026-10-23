@@ -50,7 +50,7 @@ class SkillRegistry:
 
     REMOTE_REFUSAL = "That one needs you at the PC."
 
-    def handle(self, text: str, allow_confirm: bool = True) -> str | None:
+    def handle(self, text: str, allow_confirm: bool = True, hud=None) -> str | None:
         """
         What to say, or None if this isn't a PC-control request.
 
@@ -90,7 +90,12 @@ class SkillRegistry:
 
             logger.info(f"Skill '{skill.name}'")
 
-            return skill.run(match).message
+            result = skill.run(match)
+
+            if result.hud and hud:
+                hud(result.hud)
+
+            return result.message
 
         return None
 
