@@ -7,4 +7,9 @@ export default defineConfig({
     react(),
     glsl(),
   ],
+  server: {
+    host: "localhost",
+    port: 5173,
+    strictPort: true,
+  },
 });

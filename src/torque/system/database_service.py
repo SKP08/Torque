@@ -1,12 +1,14 @@
-import sqlite3
-from pathlib import Path
-
 from loguru import logger
 
+from torque.paths import DATA_DIR, MEMORY_DB
 from torque.system.service import Service
 
 
 class DatabaseService(Service):
+    """
+    Makes sure the data directory exists. The tables themselves are created
+    by the component that owns them (see MemoryStore).
+    """
 
     @property
     def name(self):
@@ -14,10 +16,9 @@ class DatabaseService(Service):
 
     def initialize(self):
 
-        database = Path("data/memory.db")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        if not database.exists():
-            sqlite3.connect(database)
-            logger.info("Database created.")
-        else:
+        if MEMORY_DB.exists():
             logger.info("Database found.")
+        else:
+            logger.info("Database will be created on first use.")

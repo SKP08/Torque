@@ -1,7 +1,8 @@
-from pathlib import Path
+import sys
 
 from loguru import logger
 
+from torque.paths import LOGS_DIR
 from torque.system.service import Service
 
 
@@ -13,20 +14,22 @@ class LoggingService(Service):
 
     def initialize(self):
 
-        Path("logs").mkdir(exist_ok=True)
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
         logger.remove()
 
         logger.add(
-            "logs/torque.log",
+            LOGS_DIR / "torque.log",
             rotation="10 MB",
             retention=10,
             level="INFO",
+            diagnose=False,
         )
 
         logger.add(
-            lambda msg: print(msg, end=""),
+            sys.stderr,
             level="INFO",
+            diagnose=False,
         )
 
         logger.info("Logging initialized.")

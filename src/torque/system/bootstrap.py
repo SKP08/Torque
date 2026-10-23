@@ -12,3 +12,6 @@ class Bootstrap:
             self.manager.register(service)
 
         self.manager.initialize()
+
+    def shutdown(self):
+        self.manager.shutdown()

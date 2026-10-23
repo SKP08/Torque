@@ -14,3 +14,6 @@ class Service(ABC):
     @abstractmethod
     def initialize(self):
         pass
+
+    def shutdown(self):
+        """Release resources. Optional."""

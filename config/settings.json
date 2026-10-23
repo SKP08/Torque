@@ -1,8 +1,19 @@
 {
     "assistant_name": "Torque",
-    "startup": true,
-    "hotkey": "ctrl+space",
     "theme": "dark",
     "voice_enabled": true,
-    "notifications": true
+    "notifications": true,
+    "hotkey": "ctrl+space",
+    "hotkey_suppress": false,
+    "listen_timeout": 10.0,
+    "llm_model": "qwen2.5:3b",
+    "llm_num_predict": 200,
+    "whisper_model": "base",
+    "piper_voice": "en_US-lessac-medium",
+    "ws_host": "localhost",
+    "ws_port": 8765,
+    "ui_autostart": true,
+    "ui_window": true,
+    "ui_url": "http://localhost:5173",
+    "tray_enabled": true
 }

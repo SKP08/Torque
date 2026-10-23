@@ -21,9 +21,26 @@ class ServiceManager:
 
         for service in self._services:
             logger.info(f"Initializing {service.name}...")
-            service.initialize()
+
+            try:
+                service.initialize()
+            except Exception:
+                logger.exception(f"{service.name} failed to initialize.")
+                raise
 
         logger.success("All services initialized.")
+
+    def shutdown(self):
+        """
+        Stop services in reverse order. One failing service never blocks
+        the others from shutting down.
+        """
+
+        for service in reversed(self._services):
+            try:
+                service.shutdown()
+            except Exception:
+                logger.exception(f"{service.name} failed to shut down.")
 
     def get(self, service_type):
         """

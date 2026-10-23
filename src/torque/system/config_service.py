@@ -1,18 +1,68 @@
 import json
-from pathlib import Path
 
 from loguru import logger
 
+from torque.paths import CONFIG_PATH
 from torque.system.service import Service
 
 DEFAULT_CONFIG = {
     "assistant_name": "Torque",
-    "startup": True,
-    "hotkey": "ctrl+space",
     "theme": "dark",
     "voice_enabled": True,
     "notifications": True,
+
+    # Input
+    "hotkey": "ctrl+space",
+    "hotkey_suppress": False,
+    "listen_timeout": 10.0,
+
+    # Models
+    "llm_model": "qwen2.5:3b",
+    "llm_num_predict": 200,
+    "whisper_model": "base",
+    "piper_voice": "en_US-lessac-medium",
+
+    # Transport / UI
+    "ws_host": "localhost",
+    "ws_port": 8765,
+    "ui_autostart": True,
+    "ui_window": True,
+    "ui_url": "http://localhost:5173",
+    "tray_enabled": True,
 }
+
+_cache: dict | None = None
+
+
+def load_config(force: bool = False) -> dict:
+    """
+    Return the effective configuration: defaults overlaid with
+    config/settings.json. Missing or invalid files fall back to defaults.
+    """
+
+    global _cache
+
+    if _cache is not None and not force:
+        return _cache
+
+    config = dict(DEFAULT_CONFIG)
+
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+                user = json.load(file)
+
+            if isinstance(user, dict):
+                config.update(user)
+            else:
+                logger.warning("settings.json is not an object; using defaults.")
+
+        except (OSError, json.JSONDecodeError) as error:
+            logger.warning(f"Could not read settings.json ({error}); using defaults.")
+
+    _cache = config
+
+    return config
 
 
 class ConfigService(Service):
@@ -20,7 +70,7 @@ class ConfigService(Service):
     Loads and manages Torque configuration.
     """
 
-    CONFIG_PATH = Path("config/settings.json")
+    CONFIG_PATH = CONFIG_PATH
 
     @property
     def name(self) -> str:
@@ -28,7 +78,7 @@ class ConfigService(Service):
 
     def initialize(self):
 
-        self.CONFIG_PATH.parent.mkdir(exist_ok=True)
+        self.CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         if not self.CONFIG_PATH.exists():
 
@@ -37,10 +87,9 @@ class ConfigService(Service):
 
             logger.info("Created default configuration.")
 
-        else:
-            logger.info("Configuration loaded.")
+        self.config = load_config(force=True)
 
-    def load(self):
+        logger.info("Configuration loaded.")
 
-        with open(self.CONFIG_PATH, "r", encoding="utf-8") as file:
-            return json.load(file)
+    def load(self) -> dict:
+        return load_config()

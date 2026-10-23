@@ -1,19 +1,30 @@
+import os
+
 import pystray
 from PIL import Image, ImageDraw
 
+from torque.paths import CONFIG_PATH
+
 
 class TorqueTray:
+    """
+    System tray icon. Blocks in run(), so it owns the main thread.
+    """
 
-    def __init__(self):
+    def __init__(self, on_open=None, on_exit=None):
+
+        self._on_open = on_open
+        self._on_exit = on_exit
+
         self.icon = pystray.Icon(
             "Torque",
             self._create_icon(),
             "Torque",
             menu=pystray.Menu(
-                pystray.MenuItem("Open", self.open_window),
-                pystray.MenuItem("Settings", self.settings),
+                pystray.MenuItem("Open UI", self._open, default=True),
+                pystray.MenuItem("Edit settings", self._settings),
                 pystray.Menu.SEPARATOR,
-                pystray.MenuItem("Exit", self.exit),
+                pystray.MenuItem("Exit", self._exit),
             ),
         )
 
@@ -23,16 +34,21 @@ class TorqueTray:
     def stop(self):
         self.icon.stop()
 
-    def open_window(self, icon, item):
-        print("Open clicked")
+    def _open(self, icon, item):
+        if self._on_open:
+            self._on_open()
 
-    def settings(self, icon, item):
-        print("Settings clicked")
+    def _settings(self, icon, item):
+        if hasattr(os, "startfile"):
+            os.startfile(CONFIG_PATH)
 
-    def exit(self, icon, item):
+    def _exit(self, icon, item):
+        if self._on_exit:
+            self._on_exit()
         self.stop()
 
-    def _create_icon(self):
+    @staticmethod
+    def _create_icon():
         image = Image.new("RGB", (64, 64), (25, 25, 25))
         draw = ImageDraw.Draw(image)
 
