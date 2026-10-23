@@ -12,6 +12,11 @@ export default function useTorqueConnection() {
 
     const connection = connect({
       onMessage: (data) => {
+        if ("hud" in data) {
+          store.setHud(data.hud);
+          return;
+        }
+
         if (typeof data.level === "number") {
           store.setLevel(data.level);
           return;

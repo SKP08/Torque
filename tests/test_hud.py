@@ -353,7 +353,9 @@ def test_controller_broadcasts_hud_and_clear():
                                      conversation=ConversationManager(speech=FakeSpeech([])))
     controller._send_hud({"kind": "info", "title": "India"})
     controller.handle_message({"type": "dismiss"})
-    assert {"hud": {"kind": "info", "title": "India"}} in sent and {"hud": None} in sent
+    shown = [m["hud"] for m in sent if m.get("hud")]
+    assert shown and shown[0]["title"] == "India" and 3 <= shown[0]["hold"] <= 60
+    assert {"hud": None} in sent
 
 
 def test_cache_mount_serves_images_and_blocks_traversal(tmp_path):

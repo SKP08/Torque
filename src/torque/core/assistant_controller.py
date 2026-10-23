@@ -556,7 +556,13 @@ class AssistantController:
         if not self.ws:
             return
 
-        self.ws.send({"hud": None if payload.get("kind") == "clear" else payload})
+        if payload.get("kind") == "clear":
+            self.ws.send({"hud": None})
+            return
+
+        hold = float(self.config.get("hud_hold_seconds", 10))
+
+        self.ws.send({"hud": {**payload, "hold": min(max(hold, 3.0), 60.0)}})
 
     def _on_level(self, rms: float):
         """Microphone loudness for the UI's listening animation."""

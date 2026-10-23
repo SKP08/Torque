@@ -3,7 +3,7 @@
 
 const path = require("node:path");
 const { app, BrowserWindow, ipcMain, screen } = require("electron");
-const { computeBounds } = require("./position.cjs");
+const { computeBounds, fullBounds } = require("./position.cjs");
 
 const UI_URL = process.env.TORQUE_UI_URL || "http://127.0.0.1:5174";
 const POSITION = process.env.TORQUE_OVERLAY_POSITION || "bottom";
@@ -15,11 +15,12 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win = null;
+let full = false;
 
 function place() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 
-  win.setBounds(computeBounds(display.workArea, SIZE, POSITION));
+  win.setBounds(full ? fullBounds(display.bounds) : computeBounds(display.workArea, SIZE, POSITION));
 }
 
 function create() {
@@ -76,6 +77,15 @@ ipcMain.on("overlay:show", (event) => {
 
   place();
   win.showInactive();
+});
+
+// "full" while holographic panels are up, "card" for the normal small card.
+ipcMain.on("overlay:mode", (event, mode) => {
+  if (!fromOurPage(event) || !win) return;
+
+  full = mode === "full";
+
+  if (win.isVisible()) place();
 });
 
 ipcMain.on("overlay:hide", (event) => {

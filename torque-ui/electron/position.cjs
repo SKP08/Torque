@@ -30,4 +30,9 @@ function computeBounds(workArea, size, position = "bottom") {
   return { x, y: Math.round(y), width, height };
 }
 
-module.exports = { computeBounds, MARGIN };
+/** Full-screen mode (holographic panels): the whole display, taskbar included. */
+function fullBounds(display) {
+  return { x: display.x, y: display.y, width: display.width, height: display.height };
+}
+
+module.exports = { computeBounds, fullBounds, MARGIN };

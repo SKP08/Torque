@@ -1,4 +1,5 @@
 import "./App.css";
+import "./hud/hud.css";
 
 import Overlay from "./components/Overlay";
 

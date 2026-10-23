@@ -1,0 +1,193 @@
+.holo-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  color: #dff6ff;
+  --cyan: #7bd8ff;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Faint tint so panels read on a bright desktop; the desktop stays visible. */
+.holo-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, rgba(2, 14, 22, 0.42), rgba(2, 10, 16, 0.12) 70%, transparent);
+}
+
+.corner {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border: 0 solid rgba(123, 216, 255, 0.7);
+}
+.corner.tl { top: 28px; left: 28px; border-width: 2px 0 0 2px; }
+.corner.tr { top: 28px; right: 28px; border-width: 2px 2px 0 0; }
+.corner.bl { bottom: 28px; left: 28px; border-width: 0 0 2px 2px; }
+.corner.br { bottom: 28px; right: 28px; border-width: 0 2px 2px 0; }
+
+.holo-grid,
+.holo-center {
+  position: absolute;
+  inset: 0 0 150px 0;     /* leave room for the Torque card at the bottom */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4vw;
+  padding: 70px 6vw 0;
+}
+
+.holo-globe-wrap {
+  position: relative;
+  flex: none;
+  width: min(44vh, 38vw);
+  height: min(44vh, 38vw);
+  min-width: 260px;
+  min-height: 260px;
+  filter: drop-shadow(0 0 22px rgba(123, 216, 255, 0.35));
+}
+
+.holo-globe { width: 100%; height: 100%; display: block; }
+
+.globe-label {
+  position: absolute;
+  bottom: -6px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  text-shadow: 0 0 10px rgba(123, 216, 255, 0.8);
+}
+
+.holo-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(520px, 46vw);
+  max-height: 100%;
+}
+
+.holo-grid:not(.with-globe) .holo-column {
+  flex-direction: row;
+  width: auto;
+  align-items: stretch;
+}
+.holo-grid:not(.with-globe) .holo-panel { width: min(400px, 30vw); }
+
+.holo-panel {
+  --cut: 16px;
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 16px 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(40, 140, 190, 0.26), rgba(8, 30, 46, 0.62));
+  border: 1px solid rgba(123, 216, 255, 0.55);
+  box-shadow: 0 0 26px rgba(123, 216, 255, 0.22), inset 0 0 30px rgba(123, 216, 255, 0.08);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  animation: holo-float 6s ease-in-out infinite;
+  animation-delay: var(--float, 0s);
+}
+
+.holo-panel:not(.has-image) { flex-direction: column; }
+.holo-panel.has-image { flex-direction: row; }
+.holo-grid:not(.with-globe) .holo-panel.has-image { flex-direction: column; }
+
+/* A bar of light sweeping down the panel, like a scan line. */
+.holo-scan {
+  position: absolute;
+  left: 0; right: 0; top: -30%;
+  height: 30%;
+  background: linear-gradient(transparent, rgba(123, 216, 255, 0.18), transparent);
+  animation: holo-sweep 4.5s linear infinite;
+  pointer-events: none;
+}
+
+.holo-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+}
+
+.holo-image {
+  flex: none;
+  width: 150px;
+  min-height: 110px;
+  overflow: hidden;
+  border: 1px solid rgba(123, 216, 255, 0.5);
+}
+.holo-grid:not(.with-globe) .holo-image { width: 100%; height: 190px; }
+
+.holo-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Cyan duotone so photos look projected rather than pasted. */
+  filter: grayscale(0.55) sepia(0.4) hue-rotate(155deg) saturate(2.1) brightness(0.95) contrast(1.1);
+  mix-blend-mode: screen;
+  opacity: 0.92;
+}
+
+.holo-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.holo-panel h2 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(123, 216, 255, 0.9);
+}
+
+.holo-sub {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.holo-panel p {
+  font-size: 14px;
+  line-height: 1.45;
+  color: rgba(223, 246, 255, 0.92);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.holo-attribution {
+  position: absolute;
+  bottom: 160px;
+  right: 34px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: rgba(223, 246, 255, 0.55);
+}
+
+/* status panel */
+.status-panel { flex-direction: column; gap: 14px; padding: 20px 26px; align-items: center; }
+.rings { display: flex; gap: 22px; }
+.ring { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ring-track { fill: none; stroke: rgba(123, 216, 255, 0.16); stroke-width: 6; }
+.ring-value { fill: none; stroke-width: 6; stroke-linecap: round; filter: drop-shadow(0 0 5px currentColor); }
+.ring-number { fill: #fff; font-size: 17px; font-weight: 600; }
+.ring-label { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cyan); }
+.ring-note { font-size: 10px; color: rgba(223, 246, 255, 0.6); }
+.status-row { display: flex; gap: 22px; font-size: 13px; color: rgba(223, 246, 255, 0.85); }
+.top-list { list-style: none; width: 100%; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.top-list li { display: flex; justify-content: space-between; gap: 16px; }
+.top-list b { color: var(--cyan); font-weight: 600; }
+
+@keyframes holo-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes holo-sweep { from { top: -30%; } to { top: 130%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .holo-panel, .holo-scan { animation: none; }
+}

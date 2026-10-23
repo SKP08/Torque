@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { computeBounds, MARGIN } = require("./position.cjs");
+const { computeBounds, fullBounds, MARGIN } = require("./position.cjs");
 
 const size = { width: 620, height: 260 };
 
@@ -24,4 +24,9 @@ test("negative origin (monitor left of primary)", () => {
 test("never larger than the screen", () => {
   const b = computeBounds({ x: 0, y: 0, width: 400, height: 200 }, size, "center");
   assert.deepStrictEqual([b.width, b.height, b.x, b.y], [400, 200, 0, 0]);
+});
+
+test("full mode covers the whole display, offsets included", () => {
+  assert.deepStrictEqual(fullBounds({ x: -1280, y: 0, width: 1280, height: 720, extra: 1 }),
+    { x: -1280, y: 0, width: 1280, height: 720 });
 });
