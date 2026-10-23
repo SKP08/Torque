@@ -11,6 +11,7 @@ from torque.memory.memory_retriever import MemoryRetriever
 from torque.memory.memory_service import MemoryService
 from torque.memory.memory_store import MemoryStore
 from torque.system.background_worker import BackgroundWorker
+from torque.system.config_service import load_config
 from torque.system.system_router import SystemRouter
 from torque.utils.text import SentenceChunker, split_sentences, to_speech
 from torque.web.search_router import SearchRouter
@@ -33,9 +34,10 @@ class TorqueBrain:
     Turns what the user said into a reply, in a fixed order:
 
         1. quick local answers (time / date)
-        2. app commands (open / close)
-        3. web search
-        4. the local LLM, with memories
+        2. PC-control skills (volume, media, screenshot, power...)
+        3. app commands (open / close)
+        4. web search
+        5. the local LLM, with memories
 
     The reply is produced as a stream of sentences (process_stream) so the
     first one can be spoken while the rest is still being generated.
@@ -54,6 +56,7 @@ class TorqueBrain:
         system_router=None,
         search_router=None,
         context=None,
+        skills=None,
     ):
 
         logger.info("Initializing Torque Brain...")
@@ -88,11 +91,38 @@ class TorqueBrain:
 
         self.app_launcher = launcher
 
+        if skills is None:
+            skills = self._default_skills()
+
+        self.skills = skills
+
         self.router = search_router or SearchRouter()
         self.system_router = system_router or SystemRouter()
         self.conversation_policy = policy or ConversationPolicy()
 
         logger.success("Torque Brain ready.")
+
+    # ==========================================================
+    # PC-CONTROL SKILLS
+    # ==========================================================
+
+    @staticmethod
+    def _default_skills():
+
+        if not load_config()["pc_control_enabled"]:
+            return None
+
+        from torque.skills.backend import default_backend
+        from torque.skills.pc_control import build_pc_skills
+        from torque.skills.registry import SkillRegistry
+
+        return SkillRegistry(build_pc_skills(default_backend()))
+
+    @property
+    def awaiting_confirmation(self) -> bool:
+        """True while Torque has asked "are you sure?" and is waiting."""
+
+        return bool(self.skills and self.skills.awaiting_confirmation)
 
     # ==========================================================
     # SYSTEM COMMANDS
@@ -191,6 +221,15 @@ class TorqueBrain:
             yield "I didn't catch that."
             return
 
+        # A pending "are you sure?" gets the very next sentence, including a
+        # bare "yes" that would otherwise be ignored as an acknowledgement.
+        if self.skills and self.skills.awaiting_confirmation:
+            reply = self.skills.handle(last_user)
+
+            if reply:
+                yield reply
+                return
+
         policy = self.conversation_policy.analyze_input(last_user)
 
         if policy["intent"] in ("empty", "acknowledgement"):
@@ -205,14 +244,22 @@ class TorqueBrain:
             yield quick
             return
 
-        # 2. App commands (routed on the corrected, normalised text).
+        # 2. PC control: volume, media, windows, screenshot, power...
+        if self.skills:
+            reply = self.skills.handle(last_user)
+
+            if reply:
+                yield from split_sentences(reply)
+                return
+
+        # 3. App commands (routed on the corrected, normalised text).
         reply = self._process_system_commands(policy["effective_text"])
 
         if reply:
             yield from split_sentences(reply)
             return
 
-        # 3. Web search (on the user's own words).
+        # 4. Web search (on the user's own words).
         if self.router.needs_web(last_user):
 
             logger.info("Using Web Search...")
@@ -234,7 +281,7 @@ class TorqueBrain:
 
             return
 
-        # 4. The language model, streamed sentence by sentence.
+        # 5. The language model, streamed sentence by sentence.
         yield from self._chat(history, last_user)
 
     def _chat(self, history: list, last_user: str) -> Iterator[str]:

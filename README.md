@@ -59,6 +59,12 @@ Whisper `base.en` model (~150 MB) and loads everything in parallel.
 | Cancel / stop talking | `Ctrl+Space` again, or say "bye" |
 | Ends on its own | after `listen_timeout` seconds of silence |
 
+PC control (Windows): "volume up / down", "set the volume to 30", "mute",
+"pause", "next song", "previous song", "take a screenshot" (saved to
+`Pictures/Torque`), "lock my computer", "show desktop", "switch window",
+"brightness up", "set brightness to 40" (laptop screens). Hard-to-undo actions
+(shut down, restart, sleep) ask first and only run after you say "yes".
+
 Try: "open chrome", "open spotify and then open discord", "close discord",
 "what time is it", "what's the weather in Toronto", "my laptop has 32 GB of RAM"
 (remembered), then "how much RAM does my laptop have".
@@ -73,6 +79,7 @@ Try: "open chrome", "open spotify and then open discord", "close discord",
 | `hotkey_suppress` | `false` | Block the hotkey from reaching the focused app |
 | `wake_word_enabled` | `true` | Listen for "Hey Torque" (needs the always-on mic, see Notes) |
 | `chime_enabled` | `true` | Soft chime when Torque starts listening |
+| `pc_control_enabled` | `true` | Volume/media/window/screenshot/power skills |
 | `listen_timeout` | `10.0` | Seconds of silence before the first turn is abandoned |
 | `followup_timeout` | `7.0` | Seconds to wait for a follow-up before the conversation ends |
 | `end_of_speech_silence` | `0.9` | Pause that ends a long sentence (lower = snappier) |
@@ -98,6 +105,7 @@ src/torque/
   main.py              entry point
   paths.py             every filesystem path (anchored to the repo, not the CWD)
   core/                runtime, assistant controller (conversation loop), conversation manager
+  skills/              PC-control skills with permission tiers (safe / confirm) and the Windows backend
   system/              services (config, logging, db, hotkey), command router, app matching/launching
   ai/                  brain (routing), Ollama client, system prompt, context builder
   conversation/        wake word, speech analysis, conversation policy, stop phrases
@@ -113,10 +121,11 @@ tests/                 pytest suite
 ### How a request flows (`TorqueBrain.process_stream`)
 
 1. Time/date questions are answered locally.
-2. App commands (`open`, `launch`, `close`; `start`, `run`, `quit`, `exit` only
+2. PC-control skills (`skills/`); a pending "are you sure?" gets the next sentence first.
+3. App commands (`open`, `launch`, `close`; `start`, `run`, `quit`, `exit` only
    when they name a real app, so "quit smoking tips" is just a sentence).
-3. Web search for news, weather, scores, prices, "latest ..." questions.
-4. Otherwise the local LLM, with relevant memories added to the prompt.
+4. Web search for news, weather, scores, prices, "latest ..." questions.
+5. Otherwise the local LLM, with relevant memories added to the prompt.
 
 ### WebSocket protocol
 

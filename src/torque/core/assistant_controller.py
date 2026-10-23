@@ -372,7 +372,11 @@ class AssistantController:
 
                 break
 
-            if self.brain.conversation_policy.is_acknowledgement(text):
+            # A bare "yes" is chatter, unless Torque just asked to confirm something.
+            if (
+                self.brain.conversation_policy.is_acknowledgement(text)
+                and not getattr(self.brain, "awaiting_confirmation", False)
+            ):
                 continue
 
             self.conversation.add_user_message(text)
