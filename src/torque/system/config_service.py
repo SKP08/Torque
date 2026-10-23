@@ -17,6 +17,8 @@ DEFAULT_CONFIG = {
     "wake_word_enabled": True,
     "chime_enabled": True,
     "pc_control_enabled": True,
+    "security_skills_enabled": True,
+    "screen_enabled": True,
 
     # Conversation timing (seconds)
     "listen_timeout": 10.0,

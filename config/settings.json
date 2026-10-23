@@ -8,6 +8,8 @@
     "wake_word_enabled": true,
     "chime_enabled": true,
     "pc_control_enabled": true,
+    "security_skills_enabled": true,
+    "screen_enabled": true,
     "listen_timeout": 10.0,
     "followup_timeout": 7.0,
     "end_of_speech_silence": 0.9,

@@ -109,14 +109,24 @@ class TorqueBrain:
     @staticmethod
     def _default_skills():
 
-        if not load_config()["pc_control_enabled"]:
-            return None
+        config = load_config()
 
-        from torque.skills.backend import default_backend
-        from torque.skills.pc_control import build_pc_skills
         from torque.skills.registry import SkillRegistry
 
-        return SkillRegistry(build_pc_skills(default_backend()))
+        skills = []
+
+        if config["pc_control_enabled"]:
+            from torque.skills.backend import default_backend
+            from torque.skills.pc_control import build_pc_skills
+
+            skills += build_pc_skills(default_backend())
+
+        if config["security_skills_enabled"]:
+            from torque.skills.security import build_security_skills
+
+            skills += build_security_skills()
+
+        return SkillRegistry(skills) if skills else None
 
     @property
     def awaiting_confirmation(self) -> bool:
