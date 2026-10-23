@@ -21,10 +21,7 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Runtime data
-data/*.db
-data/*.wav
-data/*.mp3
-data/*.m4a
+data/
 
 # Logs
 logs/
