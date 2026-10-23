@@ -11,40 +11,23 @@ class SpeechService:
         self.microphone = MicrophoneService()
         self.whisper = WhisperService()
 
-    def listen(self) -> str:
+    def listen(self, timeout=None):
+        """
+        Returns the transcript, "" if speech was heard but not recognised,
+        or None if nobody spoke before `timeout` / the recording was cancelled.
+        """
 
         logger.info("Listening...")
 
-        audio_path = self.microphone.record()
+        audio = self.microphone.record(timeout=timeout)
 
-        # Recording may be cancelled or contain no audio.
-        if not audio_path:
+        if audio is None:
+            return None
 
-            logger.warning(
-                "No audio recording was produced."
-            )
-
-            return ""
-
-        text = self.whisper.transcribe(
-            audio_path
-        )
-
-        # Always return a clean string.
-        if not text:
-
-            return ""
-
-        return text.strip()
+        return self.whisper.transcribe(audio).strip()
 
     def stop(self):
-
-        logger.info("Stopping speech service...")
-
         self.microphone.stop()
 
     def reset(self):
-
-        logger.info("Resetting speech service...")
-
         self.microphone.reset()
