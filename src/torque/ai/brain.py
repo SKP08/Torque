@@ -11,6 +11,7 @@ from torque.memory.memory_retriever import MemoryRetriever
 from torque.memory.memory_service import MemoryService
 from torque.memory.memory_store import MemoryStore
 from torque.system.background_worker import BackgroundWorker
+from torque.screen.screen_assistant import is_screen_request
 from torque.system.config_service import load_config
 from torque.system.system_router import SystemRouter
 from torque.utils.text import SentenceChunker, split_sentences, to_speech
@@ -35,9 +36,10 @@ class TorqueBrain:
 
         1. quick local answers (time / date)
         2. PC-control skills (volume, media, screenshot, power...)
-        3. app commands (open / close)
-        4. web search
-        5. the local LLM, with memories
+        3. screen questions ("what's this error?")
+        4. app commands (open / close)
+        5. web search
+        6. the local LLM, with memories
 
     The reply is produced as a stream of sentences (process_stream) so the
     first one can be spoken while the rest is still being generated.
@@ -57,6 +59,7 @@ class TorqueBrain:
         search_router=None,
         context=None,
         skills=None,
+        screen=None,
     ):
 
         logger.info("Initializing Torque Brain...")
@@ -95,6 +98,13 @@ class TorqueBrain:
             skills = self._default_skills()
 
         self.skills = skills
+
+        if screen is None and load_config()["screen_enabled"]:
+            from torque.screen.screen_assistant import ScreenAssistant
+
+            screen = ScreenAssistant(self.llm)
+
+        self.screen = screen or None
 
         self.router = search_router or SearchRouter()
         self.system_router = system_router or SystemRouter()
@@ -262,14 +272,24 @@ class TorqueBrain:
                 yield from split_sentences(reply)
                 return
 
-        # 3. App commands (routed on the corrected, normalised text).
+        # 3. "What's this error?" - look at the screen.
+        if self.screen and is_screen_request(last_user):
+
+            if on_status:
+                on_status("thinking", "Looking at your screen...")
+
+            yield from self.screen.answer(last_user)
+
+            return
+
+        # 4. App commands (routed on the corrected, normalised text).
         reply = self._process_system_commands(policy["effective_text"])
 
         if reply:
             yield from split_sentences(reply)
             return
 
-        # 4. Web search (on the user's own words).
+        # 5. Web search (on the user's own words).
         if self.router.needs_web(last_user):
 
             logger.info("Using Web Search...")
@@ -291,7 +311,7 @@ class TorqueBrain:
 
             return
 
-        # 5. The language model, streamed sentence by sentence.
+        # 6. The language model, streamed sentence by sentence.
         yield from self._chat(history, last_user)
 
     def _chat(self, history: list, last_user: str) -> Iterator[str]:

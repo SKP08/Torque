@@ -26,6 +26,10 @@ dependencies = [
     "websockets>=15.0.1",
 ]
 
+[project.optional-dependencies]
+# Local OCR for "what's this error?" (bundles its models, works offline).
+screen = ["rapidocr-onnxruntime>=1.2.3"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
