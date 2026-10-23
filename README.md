@@ -2,23 +2,24 @@
 
 A local-first, voice-driven personal assistant for Windows.
 
-Press the hotkey, talk, and Torque listens, understands, acts (open/close apps,
-web search, time/date), and answers out loud, while a small orb UI shows what
-it is doing.
+Say **"Hey Torque"** (or press the hotkey) and a small card slides up over
+whatever you are doing. Torque listens, understands, acts (open/close apps, web
+search, time/date) and answers out loud, then slides away.
 
 ```
-hotkey -> microphone -> Silero VAD -> faster-whisper -> brain -> Piper TTS
-                                                         |
-                    app commands | web search (Tavily) | local LLM (Ollama) + memory
-                                                         |
-                                     WebSocket -> React/Three.js orb UI
+"Hey Torque" / hotkey -> mic -> Silero VAD (onnx) -> faster-whisper -> brain -> Piper TTS
+                                                                        |      (speaks while the
+                          app commands | web search (Tavily) |          |       reply is still
+                          local LLM (Ollama, streamed) + memory    -----+       being written)
+                                                                        |
+                                 WebSocket -> React overlay (Electron, transparent, always on top)
 ```
 
 ## Requirements
 
 - Windows 10/11 (app launching, hotkey and tray are Windows-specific)
 - Python 3.14 and [uv](https://docs.astral.sh/uv/)
-- Node.js 20+ (for the UI)
+- Node.js 20+ (for the overlay UI)
 - [Ollama](https://ollama.com) running locally
 - A microphone and speakers
 
@@ -47,12 +48,14 @@ copy .env.example .env      # then put your Tavily key in .env
 uv run torque
 ```
 
-Torque starts the UI, opens it in an app window, and sits in the system tray.
-First start is slow while models load.
+Torque builds the UI on first run (`npm run build`, automatic), starts the
+overlay and sits in the system tray. First start is slower: it downloads the
+Whisper `base.en` model (~150 MB) and loads everything in parallel.
 
 | Action | How |
 | --- | --- |
-| Start talking | `Ctrl+Space` (configurable) |
+| Start talking | say **"Hey Torque"**, or `Ctrl+Space` (configurable), or tray -> Talk to Torque |
+| One breath | "Hey Torque, open Chrome" (no chime, runs straight away) |
 | Cancel / stop talking | `Ctrl+Space` again, or say "bye" |
 | Ends on its own | after `listen_timeout` seconds of silence |
 
@@ -68,15 +71,24 @@ Try: "open chrome", "open spotify and then open discord", "close discord",
 | --- | --- | --- |
 | `hotkey` | `ctrl+space` | Global hotkey |
 | `hotkey_suppress` | `false` | Block the hotkey from reaching the focused app |
-| `listen_timeout` | `10.0` | Seconds of silence before the conversation ends |
+| `wake_word_enabled` | `true` | Listen for "Hey Torque" (needs the always-on mic, see Notes) |
+| `chime_enabled` | `true` | Soft chime when Torque starts listening |
+| `listen_timeout` | `10.0` | Seconds of silence before the first turn is abandoned |
+| `followup_timeout` | `7.0` | Seconds to wait for a follow-up before the conversation ends |
+| `end_of_speech_silence` | `0.9` | Pause that ends a long sentence (lower = snappier) |
+| `end_of_speech_silence_short` | `0.5` | Pause that ends a short command |
 | `voice_enabled` | `true` | Speak replies |
 | `llm_model` | `qwen2.5:3b` | Ollama model |
 | `llm_num_predict` | `200` | Max tokens per reply |
-| `whisper_model` | `base` | faster-whisper model size |
+| `whisper_model` | `base.en` | faster-whisper model (`small.en` is more accurate, slower) |
+| `whisper_device` | `cpu` | `cpu`, `cuda` or `auto` (falls back to CPU on error) |
+| `llm_num_ctx` | `2048` | LLM context window (smaller = faster) |
+| `web_search_depth` | `basic` | Tavily depth; `advanced` is slower |
 | `piper_voice` | `en_US-lessac-medium` | Voice file name in `models/piper/` |
 | `ws_host` / `ws_port` | `localhost` / `8765` | WebSocket address |
-| `ui_autostart` | `true` | Start the React dev server |
-| `ui_window` | `true` | Open the UI in an Edge/Chrome app window |
+| `ui_mode` | `overlay` | `overlay` (Electron card), `window` (Edge/Chrome app window) or `none` |
+| `ui_port` | `5174` | Local port the built UI is served on (127.0.0.1 only) |
+| `overlay_position` | `bottom` | `bottom`, `top` or `center` |
 | `tray_enabled` | `true` | Show the tray icon |
 
 ## Layout
@@ -88,17 +100,17 @@ src/torque/
   core/                runtime, assistant controller (conversation loop), conversation manager
   system/              services (config, logging, db, hotkey), command router, app matching/launching
   ai/                  brain (routing), Ollama client, system prompt, context builder
-  conversation/        speech analysis, conversation policy, stop phrases
-  audio/               microphone + VAD, utterance state machine, Whisper, Piper TTS
+  conversation/        wake word, speech analysis, conversation policy, stop phrases
+  audio/               mic stream, VAD (onnx), utterance state machine, Whisper, Piper TTS, chime
   memory/              SQLite memory store, extraction, retrieval
   web/                 search router (when to search) and Tavily client
   websocket/           local WebSocket hub (Origin-checked)
-  ui/                  UI launcher, tray
-torque-ui/             React + Three.js orb
+  ui/                  UI launcher, static server, tray
+torque-ui/             React + Three.js overlay; electron/ holds the transparent window
 tests/                 pytest suite
 ```
 
-### How a request flows (`TorqueBrain.process`)
+### How a request flows (`TorqueBrain.process_stream`)
 
 1. Time/date questions are answered locally.
 2. App commands (`open`, `launch`, `close`; `start`, `run`, `quit`, `exit` only
@@ -108,9 +120,10 @@ tests/                 pytest suite
 
 ### WebSocket protocol
 
-Torque -> UI: `{"state": "idle|loading|listening|thinking|searching|speaking|error", "message": "..."}`
-(the latest state is replayed to new clients).
-UI -> Torque: `{"type": "cancel"}` or `{"type": "text", "text": "open chrome"}`.
+Torque -> UI: `{"state": "idle|loading|listening|thinking|searching|speaking|error", "message": "...", "heard": "..."}`
+(`heard` is what Torque understood; the latest state is replayed to new clients),
+and `{"level": 0.0-1.0}` microphone loudness while listening (not replayed).
+UI -> Torque: `{"type": "cancel"}`, `{"type": "activate"}` or `{"type": "text", "text": "open chrome"}`.
 Only browser pages served from the UI origin (and non-browser clients) may connect.
 
 ## Tests
@@ -120,12 +133,17 @@ uv run pytest
 ```
 
 The suite covers routing, speech analysis, app matching, memory, the
-microphone state machine, streaming TTS, the conversation loop and the
-WebSocket server. It does not need audio hardware, Ollama or an API key.
+wake word, VAD and microphone state machine (against a real speech sample),
+streaming LLM/TTS, the conversation loop, the UI server and the WebSocket server.
+`npm test` in `torque-ui` checks the overlay's window placement. It does not need audio hardware, Ollama or an API key.
 
 ## Notes
 
 - `data/` (memory database), `logs/`, `models/` and `.env` are git-ignored.
-- Transcripts of what you say are written to `logs/torque.log`.
+- **Microphone:** with the wake word on, the mic stays open. Audio never leaves
+  your PC (Whisper runs locally) and speech that is not addressed to Torque is
+  discarded without being logged. Set `wake_word_enabled` to `false` to use only
+  the hotkey. Windows will show its "microphone in use" indicator while it is on.
+- What you say *to* Torque (after the wake word) is written to `logs/torque.log`.
 - `close` asks apps to close politely (like clicking X) and refuses to touch
   Explorer and other system processes.
