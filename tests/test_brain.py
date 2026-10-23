@@ -85,7 +85,7 @@ class InlineWorker:
 def parts():
     return dict(
         llm=FakeLLM(), web=FakeWeb(), launcher=FakeLauncher(),
-        memory=FakeMemory(), context=FakeContext(), worker=InlineWorker(), skills=False, screen=False,
+        memory=FakeMemory(), context=FakeContext(), worker=InlineWorker(), skills=False, screen=False, agent=False,
     )
 
 

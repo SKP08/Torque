@@ -90,7 +90,7 @@ def test_brain_routes_screen_questions_and_reports_status():
     assistant = ScreenAssistant(FakeLLM("It is a syntax error."), reader([(0, 0, 20, "SyntaxError: invalid syntax here")]))
     brain = TorqueBrain(
         llm=FakeLLM(), web=FakeWeb(), launcher=FakeLauncher(), memory=FakeMemory(),
-        context=FakeContext(), worker=InlineWorker(), skills=False, screen=assistant,
+        context=FakeContext(), worker=InlineWorker(), skills=False, screen=assistant, agent=False,
     )
     seen = []
     out = list(brain.process_stream([{"role": "user", "content": "what does this error mean"}],

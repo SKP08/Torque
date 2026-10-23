@@ -152,7 +152,7 @@ def test_normalise_strips_polite_filler():
 def make_brain(registry):
     return TorqueBrain(
         llm=FakeLLM(), web=FakeWeb(), launcher=FakeLauncher(), memory=FakeMemory(),
-        context=FakeContext(), worker=InlineWorker(), skills=registry,
+        context=FakeContext(), worker=InlineWorker(), skills=registry, screen=False, agent=False,
     )
 
 
