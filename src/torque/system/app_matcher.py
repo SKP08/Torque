@@ -1,15 +1,29 @@
+import re
+
 from rapidfuzz import fuzz
 
 from torque.system.app_registry import AppRegistry
 
 
+def _norm(text: str) -> str:
+    text = re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
 class AppMatcher:
+    """
+    Resolves a spoken app name to an installed application.
+
+    Matching is deliberately strict: a wrong app launching is worse than
+    "I couldn't find that". Short or vague queries never match.
+    """
 
     ALIASES = {
         # Browsers
         "chrome": "google chrome",
         "browser": "google chrome",
         "edge": "microsoft edge",
+        "firefox": "firefox",
 
         # VS Code
         "code": "visual studio code",
@@ -18,82 +32,114 @@ class AppMatcher:
 
         # Explorer
         "explorer": "file explorer",
-        "file explorer": "file explorer",
+        "files": "file explorer",
+        "file manager": "file explorer",
         "windows explorer": "file explorer",
 
         # Terminal
         "cmd": "command prompt",
-        "command prompt": "command prompt",
         "terminal": "windows terminal",
         "powershell": "windows powershell",
+        "power shell": "windows powershell",
 
         # Utilities
-        "paint": "paint",
-        "notepad": "notepad",
-        "calculator": "calculator",
         "calc": "calculator",
+        "task manager": "task manager",
+        "settings": "settings",
+        "snipping tool": "snipping tool",
 
         # Common apps
-        "discord": "discord",
-        "spotify": "spotify",
-        "steam": "steam",
-        "obs": "obs",
+        "word": "word",
+        "excel": "excel",
+        "powerpoint": "powerpoint",
+        "teams": "microsoft teams",
+        "whatsapp": "whatsapp",
     }
 
-    def __init__(self):
+    MIN_QUERY_LENGTH = 3
+    FUZZY_THRESHOLD = 85
 
-        self.registry = AppRegistry()
+    def __init__(self, registry=None):
+
+        self.registry = registry or AppRegistry()
 
     def load(self):
 
         self.registry.load()
 
+    @staticmethod
+    def _shortest(candidates):
+        # Prefer the simplest name ("Chrome" over "Chrome Remote Desktop").
+        return min(candidates, key=lambda c: (len(c[1]), c[1]))[0]
+
     def match(self, query: str):
 
+        query = _norm(query)
+
         query = (
-            query.lower()
-            .strip()
-            .rstrip(".,!?")
+            self.ALIASES.get(query)
+            or self.ALIASES.get(query.replace(" ", ""))
+            or query
         )
 
-        # Resolve aliases
-        query = self.ALIASES.get(query, query)
+        compact = query.replace(" ", "")
 
-        apps = self.registry.all()
+        if len(compact) < self.MIN_QUERY_LENGTH:
+            return None
 
-        # ---------------- Exact ----------------
+        entries = [(app, _norm(app["name"])) for app in self.registry.all()]
 
-        for app in apps:
+        tokens = query.split()
 
-            if app["name"].lower() == query:
-                return app
+        # 1. Exact name.
+        exact = [e for e in entries if e[1] == query]
 
-        # ---------------- Contains ----------------
+        if exact:
+            return exact[0][0]
 
-        for app in apps:
+        # 2. Query is the start of the name ("visual studio" -> Visual Studio Code).
+        prefix = [e for e in entries if e[1].split()[: len(tokens)] == tokens]
 
-            if query in app["name"].lower():
-                return app
+        if prefix:
+            return self._shortest(prefix)
 
-        # ---------------- Fuzzy ----------------
+        # 3. Every query word appears as a whole word in the name.
+        contained = [e for e in entries if set(tokens) <= set(e[1].split())]
 
-        best = None
-        score = 0
+        if contained:
+            return self._shortest(contained)
 
-        for app in apps:
+        # 4. Same letters ignoring spaces ("power shell" / "powershell").
+        squashed = [e for e in entries if e[1].replace(" ", "") == compact]
 
-            s = fuzz.token_sort_ratio(
-                query,
-                app["name"].lower(),
-            )
+        if squashed:
+            return self._shortest(squashed)
 
-            if s > score:
+        # 5. Single word that begins a name word ("disc" -> Discord).
+        if len(tokens) == 1 and len(query) >= 4:
 
-                score = s
-                best = app
+            begins = [
+                e for e in entries
+                if any(word.startswith(query) for word in e[1].split())
+            ]
 
-        if score >= 75:
+            if begins:
+                return self._shortest(begins)
 
-            return best
+        # 6. Fuzzy, to tolerate speech-recognition slips ("spotifi").
+        if len(compact) >= 4:
+
+            best = None
+            best_score = 0
+
+            for app, name in entries:
+
+                score = fuzz.token_sort_ratio(query, name)
+
+                if score > best_score:
+                    best, best_score = app, score
+
+            if best_score >= self.FUZZY_THRESHOLD:
+                return best
 
         return None

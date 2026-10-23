@@ -1,38 +1,51 @@
 import re
 
+from torque.system.system_commands import (
+    STRONG_CLOSE,
+    STRONG_OPEN,
+    WEAK_CLOSE,
+    WEAK_OPEN,
+)
+
+_ALL_VERBS = STRONG_OPEN + WEAK_OPEN + STRONG_CLOSE + WEAK_CLOSE
+_STRONG_VERBS = set(STRONG_OPEN + STRONG_CLOSE)
+
+_VERB_ALTERNATION = "|".join(_ALL_VERBS)
+
+_PREAMBLE = re.compile(
+    r"^(?:(?:please|hey|ok|okay|just|can you|could you|would you|will you|"
+    r"i want you to|i want to|i need you to|let's|lets|go ahead and)\b[\s,]*)+"
+)
+
+# "open edge and then open chrome", "close notepad then start spotify"
+_SEPARATOR = re.compile(
+    rf"\s+(?:and then|then|and|also)\s+(?=(?:{_VERB_ALTERNATION})\b)"
+)
+
+_LEADING_FILLER = re.compile(r"^(?:up|the|my|a|an)\s+")
+_TRAILING_FILLER = re.compile(
+    r"\s+(?:app|application|program|please|for me|now|thanks|thank you|"
+    r"yeah|okay|ok|right)$"
+)
+
+# Whisper often drops punctuation: "open edge open file explorer".
+# Split before a strong verb unless the previous word makes it part of a
+# phrase ("close the open window").
+_NO_SPLIT_AFTER = {"the", "a", "an", "my", "to", "of", "and", "or", "please", "then"}
+
 
 class SystemRouter:
+    """
+    Parses spoken text into app commands.
 
-    OPEN_COMMANDS = (
-        "open",
-        "launch",
-        "start",
-        "run",
-    )
+    route() returns None (not a command), a single command dict, or
+    {"action": "sequence", "commands": [...]}. Each command is
+    {"action": "open"|"close", "target": str, "explicit": bool}; see
+    system_commands.py for what "explicit" means.
+    """
 
-    CLOSE_COMMANDS = (
-        "close",
-        "exit",
-        "quit",
-    )
-
-    # Words/phrases that can separate commands.
-    COMMAND_SEPARATORS = (
-        "and then",
-        "then",
-        "and",
-    )
-
-    # Words that can appear when the user corrects themselves.
-    CORRECTION_MARKERS = (
-        "actually",
-        "wait",
-        "sorry",
-        "no",
-        "rather",
-        "instead",
-        "correction",
-    )
+    OPEN_COMMANDS = STRONG_OPEN + WEAK_OPEN
+    CLOSE_COMMANDS = STRONG_CLOSE + WEAK_CLOSE
 
     def _clean(self, text: str) -> str:
 
@@ -40,50 +53,15 @@ class SystemRouter:
             return ""
 
         text = text.lower().strip()
+        text = re.sub(r"[.!?;:]", " ", text)
+        text = re.sub(r"\s*,\s*", ", ", text)
+        text = re.sub(r"\s+", " ", text)
 
-        # Normalize punctuation into spaces.
-        text = re.sub(
-            r"[.!?;:]",
-            " ",
-            text,
-        )
-
-        # Normalize commas.
-        text = re.sub(
-            r"\s*,\s*",
-            ", ",
-            text,
-        )
-
-        # Collapse whitespace.
-        text = re.sub(
-            r"\s+",
-            " ",
-            text,
-        )
-
-        return text.strip()
+        return text.strip(" ,")
 
     def _clean_target(self, target: str) -> str:
 
-        target = target.strip()
-
-        # Remove punctuation around target.
-        target = re.sub(
-            r"^[,\s]+|[,\s]+$",
-            "",
-            target,
-        )
-
-        # Remove conversational endings.
-        trailing_phrases = (
-            "thank you",
-            "thanks",
-            "yeah",
-            "okay",
-            "ok",
-            "right",
-        )
+        target = target.strip(" ,")
 
         changed = True
 
@@ -91,270 +69,81 @@ class SystemRouter:
 
             changed = False
 
-            for phrase in trailing_phrases:
+            for pattern in (_LEADING_FILLER, _TRAILING_FILLER):
 
-                pattern = (
-                    rf"\s+{re.escape(phrase)}$"
-                )
-
-                cleaned = re.sub(
-                    pattern,
-                    "",
-                    target,
-                    flags=re.IGNORECASE,
-                ).strip()
+                cleaned = pattern.sub("", target).strip(" ,")
 
                 if cleaned != target:
-
                     target = cleaned
                     changed = True
 
         return target
 
-    def _match_command(self, text: str):
+    def _split_inline(self, part: str) -> list[str]:
 
-        text = text.strip()
+        pieces = []
+        current = []
 
-        # ---------------- OPEN ----------------
+        for token in part.split():
 
-        for command in self.OPEN_COMMANDS:
-
-            if text == command:
-
-                return {
-                    "action": "open",
-                    "target": "",
-                }
-
-            prefix = command + " "
-
-            if text.startswith(prefix):
-
-                target = text[
-                    len(command):
-                ].strip()
-
-                return {
-                    "action": "open",
-                    "target": self._clean_target(
-                        target
-                    ),
-                }
-
-        # ---------------- CLOSE ----------------
-
-        for command in self.CLOSE_COMMANDS:
-
-            if text == command:
-
-                return {
-                    "action": "close",
-                    "target": "",
-                }
-
-            prefix = command + " "
-
-            if text.startswith(prefix):
-
-                target = text[
-                    len(command):
-                ].strip()
-
-                return {
-                    "action": "close",
-                    "target": self._clean_target(
-                        target
-                    ),
-                }
-
-        return None
-
-    def _remove_correction_prefix(
-        self,
-        text: str,
-    ) -> str:
-        """
-        Handles cases such as:
-
-            open edge actually open chrome
-            open edge wait open chrome
-            open edge sorry open chrome
-            open edge no sorry open chrome
-
-        The final command should win.
-        """
-
-        text = text.strip()
-
-        # Look for the LAST correction marker.
-        matches = []
-
-        for marker in self.CORRECTION_MARKERS:
-
-            pattern = rf"\b{re.escape(marker)}\b"
-
-            for match in re.finditer(
-                pattern,
-                text,
+            if (
+                current
+                and token in _STRONG_VERBS
+                and len(current) >= 2
+                and current[-1] not in _NO_SPLIT_AFTER
             ):
+                pieces.append(" ".join(current))
+                current = []
 
-                matches.append(
-                    (
-                        match.start(),
-                        match.end(),
-                    )
-                )
+            current.append(token)
 
-        if not matches:
-            return text
+        if current:
+            pieces.append(" ".join(current))
 
-        matches.sort(
-            key=lambda item: item[0]
-        )
+        return pieces
 
-        _, end = matches[-1]
-
-        remainder = text[end:].strip()
-
-        # Remove another correction marker if the
-        # sequence was "no sorry open ..."
-        for marker in self.CORRECTION_MARKERS:
-
-            prefix = marker + " "
-
-            if remainder.startswith(prefix):
-
-                remainder = remainder[
-                    len(marker):
-                ].strip()
-
-        return remainder
-
-    def _split_commands(
-        self,
-        text: str,
-    ) -> list[str]:
-        """
-        Split a natural-language request into individual
-        system commands.
-
-        Examples:
-
-            open chrome, open discord
-
-            -> [
-                "open chrome",
-                "open discord"
-            ]
-
-            open chrome and then open discord
-
-            -> [
-                "open chrome",
-                "open discord"
-            ]
-
-            open edge open file explorer
-
-            -> [
-                "open edge",
-                "open file explorer"
-            ]
-        """
-
-        text = text.strip()
-
-        if not text:
-            return []
-
-        # --------------------------------------------------
-        # First split explicitly on commas.
-        # --------------------------------------------------
-
-        comma_parts = [
-            part.strip()
-            for part in text.split(",")
-            if part.strip()
-        ]
+    def _split_commands(self, text: str) -> list[str]:
 
         parts = []
 
-        for part in comma_parts:
+        for comma_part in text.split(","):
 
-            # --------------------------------------------------
-            # Split "and then", "then", and "and" only when
-            # another command follows.
-            # --------------------------------------------------
+            comma_part = comma_part.strip()
 
-            pattern = (
-                r"\s+(?:and\s+then|then|and)"
-                r"\s+(?=(?:open|launch|start|run|close|exit|quit)\b)"
-            )
-
-            subparts = re.split(
-                pattern,
-                part,
-                flags=re.IGNORECASE,
-            )
-
-            parts.extend(
-                p.strip()
-                for p in subparts
-                if p.strip()
-            )
-
-        # --------------------------------------------------
-        # Whisper sometimes removes punctuation completely:
-        #
-        # "open microsoft edge open file explorer"
-        #
-        # Detect another command appearing in the middle.
-        # --------------------------------------------------
-
-        final_parts = []
-
-        command_pattern = re.compile(
-            r"\b(?:open|launch|start|run|close|exit|quit)\b",
-            re.IGNORECASE,
-        )
-
-        for part in parts:
-
-            matches = list(
-                command_pattern.finditer(part)
-            )
-
-            if len(matches) <= 1:
-
-                final_parts.append(part)
+            if not comma_part:
                 continue
 
-            for index, match in enumerate(matches):
+            for chunk in _SEPARATOR.split(comma_part):
+                parts.extend(self._split_inline(chunk.strip()))
 
-                start = match.start()
+        return parts
 
-                if index + 1 < len(matches):
+    def _match_command(self, text: str):
 
-                    end = matches[
-                        index + 1
-                    ].start()
+        text = _PREAMBLE.sub("", text.strip()).strip()
 
-                    command_text = part[
-                        start:end
-                    ].strip()
+        if not text:
+            return None
 
-                else:
+        verb, _, rest = text.partition(" ")
 
-                    command_text = part[
-                        start:
-                    ].strip()
+        if verb in STRONG_OPEN + WEAK_OPEN:
+            action = "open"
+        elif verb in STRONG_CLOSE + WEAK_CLOSE:
+            action = "close"
+        else:
+            return None
 
-                if command_text:
-                    final_parts.append(
-                        command_text
-                    )
+        target = self._clean_target(rest)
 
-        return final_parts
+        if not target:
+            return None
+
+        return {
+            "action": action,
+            "target": target,
+            "explicit": verb in _STRONG_VERBS,
+        }
 
     def route(self, text: str):
 
@@ -363,102 +152,20 @@ class SystemRouter:
         if not text:
             return None
 
-        # --------------------------------------------------
-        # CORRECTION HANDLING
-        #
-        # If the user says:
-        #
-        # "open edge no sorry open file explorer"
-        #
-        # the final request should win.
-        # --------------------------------------------------
-
-        correction_pattern = re.compile(
-            r"\b(?:actually|wait|sorry|"
-            r"no\s+sorry|rather|instead|correction)\b",
-            re.IGNORECASE,
-        )
-
-        if correction_pattern.search(text):
-
-            # Don't blindly throw away everything before
-            # the correction if this is a normal command
-            # containing "actually" etc.
-            #
-            # Find the last command following a correction.
-            matches = list(
-                correction_pattern.finditer(text)
-            )
-
-            if matches:
-
-                last_marker = matches[-1]
-
-                remainder = text[
-                    last_marker.end():
-                ].strip()
-
-                # Handle:
-                #
-                # "no sorry open file explorer"
-                #
-                remainder = re.sub(
-                    r"^(?:no\s+)?sorry\s+",
-                    "",
-                    remainder,
-                    flags=re.IGNORECASE,
-                ).strip()
-
-                # Only replace the request if a valid command
-                # actually follows the correction.
-                if re.match(
-                    r"^(?:open|launch|start|run|close|exit|quit)\b",
-                    remainder,
-                    flags=re.IGNORECASE,
-                ):
-
-                    text = remainder
-
-        # --------------------------------------------------
-        # Split into individual commands.
-        # --------------------------------------------------
-
-        command_texts = self._split_commands(
-            text
-        )
-
         commands = []
 
-        for command_text in command_texts:
+        for part in self._split_commands(text):
 
-            result = self._match_command(
-                command_text
-            )
+            command = self._match_command(part)
 
-            if result and result["target"]:
-
-                commands.append(result)
-
-        # --------------------------------------------------
-        # Nothing found.
-        # --------------------------------------------------
+            if command:
+                commands.append(command)
 
         if not commands:
             return None
 
-        # --------------------------------------------------
-        # Single command.
-        #
-        # Keep the old API compatible.
-        # --------------------------------------------------
-
         if len(commands) == 1:
-
             return commands[0]
-
-        # --------------------------------------------------
-        # Multiple commands.
-        # --------------------------------------------------
 
         return {
             "action": "sequence",

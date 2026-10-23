@@ -5,9 +5,9 @@ from torque.system.app_scanner import AppScanner
 
 class AppRegistry:
 
-    def __init__(self):
+    def __init__(self, scanner=None):
 
-        self.scanner = AppScanner()
+        self.scanner = scanner or AppScanner()
         self.apps = []
 
     def load(self):
@@ -16,9 +16,7 @@ class AppRegistry:
 
         self.apps = self.scanner.scan()
 
-        logger.success(
-            f"Loaded {len(self.apps)} applications."
-        )
+        logger.success(f"Loaded {len(self.apps)} applications.")
 
     def all(self) -> list[dict]:
 
