@@ -1,30 +1,69 @@
 import os
 import shutil
-import socket
 import subprocess
 import sys
-import threading
-import time
 import webbrowser
 from pathlib import Path
-from urllib.parse import urlparse
 
 from loguru import logger
 
 from torque.paths import LOGS_DIR, UI_DIR
 from torque.system.config_service import load_config
+from torque.ui.static_server import StaticServer
 
 IS_WINDOWS = sys.platform == "win32"
+
+BUILD_TIMEOUT = 180
+
+
+def find_electron(ui_dir: Path = UI_DIR) -> Path | None:
+    """The Electron binary installed by `npm install` in torque-ui, if any."""
+
+    package = ui_dir / "node_modules" / "electron"
+    marker = package / "path.txt"
+
+    try:
+        relative = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+    binary = package / "dist" / relative
+
+    return binary if binary.exists() else None
+
+
+def build_is_stale(ui_dir: Path = UI_DIR) -> bool:
+    """True if torque-ui/dist is missing or older than the sources."""
+
+    index = ui_dir / "dist" / "index.html"
+
+    if not index.exists():
+        return True
+
+    built = index.stat().st_mtime
+
+    watched = [ui_dir / "index.html", ui_dir / "package.json", ui_dir / "vite.config.js"]
+    watched += (ui_dir / "src").rglob("*") if (ui_dir / "src").exists() else []
+
+    return any(p.is_file() and p.stat().st_mtime > built for p in watched)
 
 
 class UILauncher:
     """
-    Starts the React UI dev server and opens it in a frameless app window
-    (Edge/Chrome --app mode), falling back to the default browser.
+    Serves the React UI and shows it.
+
+    ui_mode "overlay": a transparent always-on-top Electron window that pops
+                       up when Torque is active (the Siri-style card).
+    ui_mode "window":  a normal frameless Edge/Chrome app window.
+    ui_mode "none":    nothing; the UI is still reachable in a browser tab.
+
+    If Electron isn't installed the overlay falls back to the app window.
     """
 
     def __init__(self):
+        self.server = None
         self.process = None
+        self.url = None
         self._log_file = None
 
     # ----------------------------------------------------------
@@ -33,65 +72,98 @@ class UILauncher:
 
         config = load_config()
 
-        self.url = config["ui_url"]
+        mode = config["ui_mode"]
+
+        if mode == "none":
+            return
+
+        if not self._ensure_built():
+            return
+
+        self.server = StaticServer(UI_DIR / "dist", config["ui_port"])
+
+        if not self.server.start():
+            self.server = None
+            return
+
+        self.url = self.server.url
+
+        if mode == "overlay":
+            if self._start_overlay(config):
+                return
+
+            logger.warning(
+                "Electron isn't installed (run 'npm install' in torque-ui); "
+                "using a normal app window instead."
+            )
+
+        self.open_window()
+
+    def _ensure_built(self) -> bool:
+
+        if not build_is_stale():
+            return True
 
         npm = shutil.which("npm.cmd" if IS_WINDOWS else "npm") or shutil.which("npm")
 
-        if not npm:
-            logger.warning("npm not found; the UI was not started. Install Node.js.")
-            return
-
-        if not (UI_DIR / "node_modules").exists():
+        if not npm or not (UI_DIR / "node_modules").exists():
             logger.warning(
-                f"UI dependencies missing. Run 'npm install' in {UI_DIR} first."
+                f"UI not built. Install Node.js, then run 'npm install' and "
+                f"'npm run build' in {UI_DIR}."
             )
-            return
+            return (UI_DIR / "dist" / "index.html").exists()
+
+        logger.info("Building the UI (first run, or sources changed)...")
+
+        try:
+            result = subprocess.run(
+                [npm, "run", "build"],
+                cwd=str(UI_DIR),
+                capture_output=True,
+                text=True,
+                timeout=BUILD_TIMEOUT,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            logger.exception("UI build failed.")
+            return (UI_DIR / "dist" / "index.html").exists()
+
+        if result.returncode != 0:
+            logger.error(f"UI build failed:\n{result.stdout[-800:]}{result.stderr[-800:]}")
+            return (UI_DIR / "dist" / "index.html").exists()
+
+        return True
+
+    def _start_overlay(self, config) -> bool:
+
+        electron = find_electron()
+
+        if not electron:
+            return False
 
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
         self._log_file = open(LOGS_DIR / "ui.log", "ab")
 
-        logger.info(f"Launching React UI from: {UI_DIR}")
+        env = {
+            **os.environ,
+            "TORQUE_UI_URL": self.url,
+            "TORQUE_OVERLAY_POSITION": config["overlay_position"],
+        }
+
+        # Electron must not run as plain node.
+        env.pop("ELECTRON_RUN_AS_NODE", None)
 
         self.process = subprocess.Popen(
-            [npm, "run", "dev"],
+            [str(electron), str(UI_DIR)],
             cwd=str(UI_DIR),
+            env=env,
             stdout=self._log_file,
             stderr=subprocess.STDOUT,
         )
 
-        if config["ui_window"]:
-            threading.Thread(
-                target=self._open_when_ready,
-                name="TorqueUIOpen",
-                daemon=True,
-            ).start()
+        logger.info("Overlay started.")
 
-    def _open_when_ready(self):
-
-        parsed = urlparse(self.url)
-
-        host = parsed.hostname or "localhost"
-        port = parsed.port or 80
-
-        deadline = time.monotonic() + 30
-
-        while time.monotonic() < deadline:
-
-            if self.process and self.process.poll() is not None:
-                logger.error("UI dev server exited early; see logs/ui.log")
-                return
-
-            try:
-                with socket.create_connection((host, port), timeout=1):
-                    break
-            except OSError:
-                time.sleep(0.5)
-        else:
-            logger.warning("UI dev server did not become ready in time.")
-            return
-
-        self.open_window()
+        return True
 
     # ----------------------------------------------------------
 
@@ -117,16 +189,19 @@ class UILauncher:
         return shutil.which("msedge") or shutil.which("chrome")
 
     def open_window(self):
+        """A normal (non-overlay) window with the UI."""
 
-        url = getattr(self, "url", None) or load_config()["ui_url"]
+        if not self.url:
+            logger.info("The UI isn't running.")
+            return
 
         browser = self._find_browser()
 
         if browser:
-            subprocess.Popen([browser, f"--app={url}", "--window-size=520,620"])
+            subprocess.Popen([browser, f"--app={self.url}", "--window-size=560,300"])
             return
 
-        webbrowser.open(url)
+        webbrowser.open(self.url)
 
     # ----------------------------------------------------------
 
@@ -138,7 +213,7 @@ class UILauncher:
 
             try:
                 if IS_WINDOWS:
-                    # npm spawns child processes; kill the whole tree.
+                    # Electron spawns helper processes; kill the whole tree.
                     subprocess.run(
                         ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                         capture_output=True,
@@ -148,10 +223,14 @@ class UILauncher:
                     process.terminate()
 
             except Exception:  # noqa: BLE001
-                logger.exception("Could not stop the UI process.")
+                logger.exception("Could not stop the overlay.")
 
         if self._log_file:
             self._log_file.close()
             self._log_file = None
+
+        if self.server:
+            self.server.stop()
+            self.server = None
 
         self.process = None

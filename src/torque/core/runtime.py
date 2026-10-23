@@ -41,10 +41,9 @@ class TorqueRuntime:
         if ws:
             ws.send({"state": "loading", "message": "Loading..."})
 
-        if config["ui_autostart"]:
-            self.ui.start()
+        self.ui.start()
 
-        # Heavy: loads Whisper, Silero, Piper and scans installed apps.
+        # Heavy: loads Whisper, Piper and the LLM at the same time.
         try:
             from torque.core.assistant_controller import AssistantController
 
@@ -64,9 +63,14 @@ class TorqueRuntime:
         if hotkey:
             hotkey.set_controller(self.controller)
 
-        logger.success(
-            f"Torque is running. Press {config['hotkey']} to talk."
-        )
+        self.controller.start()
+
+        how = f"Press {config['hotkey']}"
+
+        if config["wake_word_enabled"]:
+            how = f"Say 'Hey Torque' or press {config['hotkey']}"
+
+        logger.success(f"Torque is running. {how} to talk.")
 
         self._run_foreground(config)
 
@@ -81,7 +85,10 @@ class TorqueRuntime:
             try:
                 from torque.ui.tray import TorqueTray
 
-                tray = TorqueTray(on_open=self.ui.open_window)
+                tray = TorqueTray(
+                    on_talk=self.controller.toggle,
+                    on_open=self.ui.open_window,
+                )
                 tray.run()
                 return
 

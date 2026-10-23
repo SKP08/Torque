@@ -1,8 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useRef } from "react";
-import Glow from "./Glow";
 import "../shaders/OrbMaterial";
-import VoiceRing from "../components/VoiceRing";
 import useTorqueStore from "../state/useTorqueStore";
 
 function Orb() {
@@ -24,7 +22,7 @@ function Orb() {
 
     switch (state) {
       case "listening":
-        target = 1.08;
+        target = 1.04 + useTorqueStore.getState().level * 0.2;
         break;
 
       case "thinking":
@@ -69,6 +67,8 @@ export default function OrbScene() {
   return (
     <Canvas
       dpr={[1, 1.5]}
+      gl={{ alpha: true, antialias: true }}
+      style={{ background: "transparent" }}
       camera={{
         position: [0, 0, 3],
         fov: 45,
@@ -82,14 +82,8 @@ export default function OrbScene() {
         color="#66ddff"
       />
 
-      {/* Voice Ring */}
-      <VoiceRing />
-
       {/* Main Orb */}
       <Orb />
-
-      {/* Bloom */}
-      <Glow />
     </Canvas>
   );
 }

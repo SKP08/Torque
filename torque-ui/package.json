@@ -7,14 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test electron/position.test.cjs",
+    "overlay": "electron ."
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.7.0",
-    "@react-three/postprocessing": "^3.0.4",
     "framer-motion": "^12.43.0",
-    "postprocessing": "^6.39.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1",
@@ -30,6 +30,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
-    "vite": "^8.2.0"
-  }
+    "vite": "^8.2.0",
+    "electron": "^45.0.0"
+  },
+  "main": "electron/main.cjs"
 }

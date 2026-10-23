@@ -90,3 +90,22 @@ def test_inbound_messages_reach_handler_and_bad_ones_are_ignored(service):
 def test_send_without_clients_is_safe(service):
     service.send({"state": "idle", "message": ""})
     time.sleep(0.05)
+
+
+def test_overlay_origins_follow_ui_port():
+    from torque.websocket.websocket_service import WebSocketService
+
+    service = WebSocketService(port=0)
+    service.initialize()
+    try:
+        assert "http://127.0.0.1:5174" in service.origins
+        assert "http://localhost:5174" in service.origins
+        assert "http://localhost:5173" in service.origins        # vite dev server
+    finally:
+        service.shutdown()
+
+
+def test_level_messages_are_not_replayed_to_new_clients(service):
+    service.send({"state": "listening", "message": "Listening..."})
+    service.send_level(0.5)
+    assert "level" not in service.last_message

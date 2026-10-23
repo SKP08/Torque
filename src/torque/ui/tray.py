@@ -11,8 +11,9 @@ class TorqueTray:
     System tray icon. Blocks in run(), so it owns the main thread.
     """
 
-    def __init__(self, on_open=None, on_exit=None):
+    def __init__(self, on_talk=None, on_open=None, on_exit=None):
 
+        self._on_talk = on_talk
         self._on_open = on_open
         self._on_exit = on_exit
 
@@ -21,7 +22,8 @@ class TorqueTray:
             self._create_icon(),
             "Torque",
             menu=pystray.Menu(
-                pystray.MenuItem("Open UI", self._open, default=True),
+                pystray.MenuItem("Talk to Torque", self._talk, default=True),
+                pystray.MenuItem("Open window", self._open),
                 pystray.MenuItem("Edit settings", self._settings),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem("Exit", self._exit),
@@ -33,6 +35,10 @@ class TorqueTray:
 
     def stop(self):
         self.icon.stop()
+
+    def _talk(self, icon, item):
+        if self._on_talk:
+            self._on_talk()
 
     def _open(self, icon, item):
         if self._on_open:

@@ -1,17 +1,11 @@
 import "./App.css";
 
-import OrbScene from "./scene/OrbScene";
-import GlassPanel from "./components/GlassPanel";
+import Overlay from "./components/Overlay";
 
 import useTorqueConnection from "./hooks/useTorqueConnection";
 
 export default function App() {
   useTorqueConnection();
 
-  return (
-    <>
-      <OrbScene />
-      <GlassPanel />
-    </>
-  );
+  return <Overlay />;
 }

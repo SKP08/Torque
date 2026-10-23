@@ -69,10 +69,12 @@ class WebSocketService(Service):
         else:
             self.origins = list(DEFAULT_ORIGINS)
 
-            ui_url = config.get("ui_url")
+            # The page Torque itself serves (overlay / app window).
+            for host in ("localhost", "127.0.0.1"):
+                origin = f"http://{host}:{config['ui_port']}"
 
-            if ui_url and ui_url not in self.origins:
-                self.origins.insert(0, ui_url.rstrip("/"))
+                if origin not in self.origins:
+                    self.origins.insert(0, origin)
 
         self.loop = asyncio.new_event_loop()
 
