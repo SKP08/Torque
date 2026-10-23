@@ -1,16 +1,8 @@
-# React + Vite
+# torque-ui
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Three.js orb that mirrors Torque's state. Started automatically by
+the Python runtime (`npm run dev`, port 5173). It connects to
+`ws://localhost:8765` and reacts to `{state, message}` messages.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Development without the backend: press keys 1-5 to preview
+idle / listening / thinking / searching / speaking.

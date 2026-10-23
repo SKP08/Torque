@@ -20,7 +20,7 @@ function Orb() {
 
     mesh.current.rotation.y += 0.002;
 
-    let target = 1;
+    let target;
 
     switch (state) {
       case "listening":
@@ -29,6 +29,14 @@ function Orb() {
 
       case "thinking":
         target = 1.14;
+        break;
+
+      case "searching":
+        target = 1.1 + Math.sin(t * 5) * 0.03;
+        break;
+
+      case "loading":
+        target = 0.92 + Math.sin(t * 3) * 0.02;
         break;
 
       case "speaking":
@@ -51,7 +59,7 @@ function Orb() {
 
   return (
     <mesh ref={mesh}>
-      <sphereGeometry args={[1, 256, 256]} />
+      <sphereGeometry args={[1, 96, 96]} />
       <orbMaterial ref={material} />
     </mesh>
   );
@@ -60,6 +68,7 @@ function Orb() {
 export default function OrbScene() {
   return (
     <Canvas
+      dpr={[1, 1.5]}
       camera={{
         position: [0, 0, 3],
         fov: 45,

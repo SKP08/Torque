@@ -62,7 +62,7 @@ float fbm(vec3 p)
     float value = 0.0;
     float amp = 0.5;
 
-    for(int i=0;i<6;i++)
+    for(int i=0;i<4;i++)
     {
         value += amp * noise(p);
 

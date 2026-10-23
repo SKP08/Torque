@@ -3,11 +3,10 @@ import "./App.css";
 import OrbScene from "./scene/OrbScene";
 import GlassPanel from "./components/GlassPanel";
 
-import useKeyboardState from "./hooks/useKeyboardState";
+import useTorqueConnection from "./hooks/useTorqueConnection";
 
 export default function App() {
-
-  useKeyboardState();
+  useTorqueConnection();
 
   return (
     <>

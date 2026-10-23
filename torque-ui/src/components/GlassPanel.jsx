@@ -2,48 +2,64 @@ import useTorqueStore from "../state/useTorqueStore";
 
 export default function GlassPanel() {
   const message = useTorqueStore((s) => s.message);
-
-  if (!message) return null;
+  const connected = useTorqueStore((s) => s.connected);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        left: "50%",
-        bottom: 70,
-        transform: "translateX(-50%)",
+    <>
+      {/* Connection indicator */}
+      <div
+        title={connected ? "Connected to Torque" : "Waiting for Torque..."}
+        style={{
+          position: "fixed",
+          top: 14,
+          right: 14,
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: connected ? "#4ade80" : "#f87171",
+          opacity: 0.7,
+          transition: ".3s",
+        }}
+      />
 
-        minWidth: 340,
-        maxWidth: 700,
+      {message && (
+        <div
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 40,
+            transform: "translateX(-50%)",
 
-        padding: "18px 24px",
+            minWidth: 240,
+            maxWidth: "calc(100vw - 32px)",
 
-        borderRadius: 22,
+            padding: "16px 22px",
 
-        color: "white",
+            borderRadius: 22,
 
-        fontSize: 20,
+            color: "white",
 
-        backdropFilter: "blur(28px)",
+            fontSize: 18,
 
-        background: "rgba(255,255,255,.08)",
+            backdropFilter: "blur(28px)",
 
-        border: "1px solid rgba(255,255,255,.15)",
+            background: "rgba(255,255,255,.08)",
 
-        boxShadow:
-          "0 15px 60px rgba(0,0,0,.35), 0 0 50px rgba(70,170,255,.18)",
+            border: "1px solid rgba(255,255,255,.15)",
 
-        transition: ".35s",
+            boxShadow:
+              "0 15px 60px rgba(0,0,0,.35), 0 0 50px rgba(70,170,255,.18)",
 
-        textAlign: "center",
+            textAlign: "center",
 
-        fontFamily:
-          "Inter, Segoe UI, sans-serif",
+            fontFamily: "Inter, Segoe UI, sans-serif",
 
-        userSelect: "none",
-      }}
-    >
-      {message}
-    </div>
+            userSelect: "none",
+          }}
+        >
+          {message}
+        </div>
+      )}
+    </>
   );
 }
