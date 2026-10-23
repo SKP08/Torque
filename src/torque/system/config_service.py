@@ -39,6 +39,13 @@ DEFAULT_CONFIG = {
     "whisper_model": "base.en",
     "whisper_device": "cpu",
     "piper_voice": "en_US-lessac-medium",
+    "tts_engine": "auto",
+    "kokoro_model": "kokoro-v1.0.int8.onnx",
+    "kokoro_voice": "bm_george",
+    "kokoro_language": "en-gb",
+    "tts_speed": 1.0,
+    "persona": "butler",
+    "user_title": "",
     "web_search_depth": "basic",
 
     # Transport / UI

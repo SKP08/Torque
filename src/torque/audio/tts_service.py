@@ -18,23 +18,123 @@ def _default_stream(sample_rate):
     return sd.OutputStream(samplerate=sample_rate, channels=1, dtype="int16")
 
 
-class TTSService:
+# Kokoro must synthesise faster than this multiple of real time to be usable;
+# otherwise there would be gaps between sentences and Piper is used instead.
+MAX_USABLE_RTF = 0.85
+BENCHMARK_SENTENCE = "The quick brown fox jumps over the lazy dog, and then it runs away."
+
+
+def measure_rtf(engine, runs=2) -> float:
+    """Seconds of compute per second of audio (lower is faster). Warms up first."""
+
+    engine.synthesize("Warm up.")
+
+    best = None
+
+    for _ in range(runs):
+
+        start = time.perf_counter()
+        audio = engine.synthesize(BENCHMARK_SENTENCE)
+        elapsed = time.perf_counter() - start
+
+        if audio is None or not len(audio):
+            return float("inf")
+
+        rtf = elapsed / (len(audio) / engine.sample_rate)
+
+        best = rtf if best is None else min(best, rtf)
+
+    return best
+
+
+def load_engine(config=None, kokoro_factory=None, piper_factory=None, rtf_probe=measure_rtf):
     """
-    Piper text-to-speech with streaming playback: the reply is synthesised
-    one sentence at a time, so the first sentence starts playing while the
-    rest is still being generated. stop() interrupts playback quickly.
+    Pick the voice: Kokoro (natural) when it is installed AND fast enough on
+    this PC, otherwise Piper. `tts_engine` can force either.
     """
 
-    def __init__(self, voice=None, stream_factory=None):
+    config = config or load_config()
+
+    choice = config["tts_engine"]
+
+    kokoro_dir = MODELS_DIR / "kokoro"
+    model = kokoro_dir / config["kokoro_model"]
+    voices = kokoro_dir / "voices-v1.0.bin"
+
+    if choice in ("auto", "kokoro"):
+
+        if model.exists() and voices.exists():
+
+            try:
+                factory = kokoro_factory or _load_kokoro
+                engine = factory(model, voices, config)
+
+                rtf = rtf_probe(engine) if choice == "auto" else None
+
+                if rtf is None or rtf <= MAX_USABLE_RTF:
+                    logger.success(
+                        "Voice: Kokoro" + (f" (speed {rtf:.2f}x real time)" if rtf else "")
+                    )
+                    return engine
+
+                logger.warning(
+                    f"Kokoro runs at {rtf:.2f}x real time on this PC (too slow); using Piper. "
+                    f"Set tts_engine to 'kokoro' to force it."
+                )
+
+            except Exception:  # noqa: BLE001
+                logger.warning("Kokoro could not start; using Piper.", exc_info=True)
+
+        elif choice == "kokoro":
+            raise FileNotFoundError(
+                "Kokoro files not found. Run: uv run python -m torque.audio.voice_download"
+            )
+
+        else:
+            logger.info("Kokoro voice not installed; using Piper. (uv run python -m torque.audio.voice_download)")
+
+    from torque.audio.kokoro_engine import PiperEngine
+
+    return PiperEngine((piper_factory or TTSService._load_voice)())
+
+
+def _load_kokoro(model, voices, config):
+
+    from torque.audio.kokoro_engine import KokoroEngine
+
+    return KokoroEngine.load(
+        model, voices, voice=config["kokoro_voice"], speed=config["tts_speed"],
+        language=config["kokoro_language"],
+    )
+
+
+class TTSService:
+    """
+    Text-to-speech with streaming playback: the reply is synthesised one
+    sentence at a time, so the first sentence starts playing while the rest
+    is still being generated. stop() interrupts playback quickly.
+
+    The voice is an "engine" (Kokoro or Piper): anything with sample_rate and
+    synthesize(sentence) -> int16 array.
+    """
+
+    def __init__(self, voice=None, stream_factory=None, engine=None):
 
         self._stop = threading.Event()
         self._stream_factory = stream_factory or _default_stream
 
-        if voice is None:
-            voice = self._load_voice()
+        if engine is None:
 
-        self.voice = voice
-        self.sample_rate = voice.config.sample_rate
+            if voice is not None:                  # a raw Piper voice (tests, old callers)
+                from torque.audio.kokoro_engine import PiperEngine
+
+                engine = PiperEngine(voice)
+            else:
+                engine = load_engine()
+
+        self.engine = engine
+        self.voice = getattr(engine, "voice", None)
+        self.sample_rate = engine.sample_rate
 
     @staticmethod
     def _load_voice():
@@ -68,14 +168,7 @@ class TTSService:
 
     def _synthesize(self, sentence: str):
 
-        chunks = [
-            chunk.audio_int16_array for chunk in self.voice.synthesize(sentence)
-        ]
-
-        if not chunks:
-            return None
-
-        return np.concatenate(chunks)
+        return self.engine.synthesize(sentence)
 
     def warm_up(self):
         """Run one throw-away synthesis so the first real reply is quick."""
