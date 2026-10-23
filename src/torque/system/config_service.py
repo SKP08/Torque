@@ -19,6 +19,9 @@ DEFAULT_CONFIG = {
     "pc_control_enabled": True,
     "security_skills_enabled": True,
     "screen_enabled": True,
+    "phone_enabled": False,
+    "phone_host": "0.0.0.0",
+    "phone_port": 8766,
 
     # Conversation timing (seconds)
     "listen_timeout": 10.0,

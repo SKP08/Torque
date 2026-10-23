@@ -18,6 +18,7 @@ UI_DIR = PROJECT_ROOT / "torque-ui"
 CONFIG_PATH = CONFIG_DIR / "settings.json"
 MEMORY_DB = DATA_DIR / "memory.db"
 APPS_CACHE = DATA_DIR / "apps.json"
+PHONE_TOKEN = DATA_DIR / "phone_token.txt"
 
 
 def ensure_dirs() -> None:

@@ -48,12 +48,20 @@ class SkillRegistry:
 
         return self._pending is not None and self._clock() < self._pending[2]
 
-    def handle(self, text: str) -> str | None:
-        """What to say, or None if this isn't a PC-control request."""
+    REMOTE_REFUSAL = "That one needs you at the PC."
+
+    def handle(self, text: str, allow_confirm: bool = True) -> str | None:
+        """
+        What to say, or None if this isn't a PC-control request.
+
+        allow_confirm=False is for requests from the phone: CONFIRM-tier
+        skills (power) are refused outright, and a confirmation pending on
+        the PC can't be answered from the phone.
+        """
 
         said = normalise(text)
 
-        if self._pending:
+        if self._pending and allow_confirm:
             reply = self._resolve_pending(said)
 
             if reply:
@@ -70,6 +78,9 @@ class SkillRegistry:
                 continue
 
             if skill.tier == CONFIRM:
+
+                if not allow_confirm:
+                    return self.REMOTE_REFUSAL
 
                 self._pending = (skill, match, self._clock() + self.CONFIRM_TTL)
 

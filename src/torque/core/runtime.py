@@ -17,6 +17,7 @@ class TorqueRuntime:
         self.bootstrap = Bootstrap()
         self.ui = UILauncher()
         self.controller = None
+        self.phone = None
 
     def start(self):
 
@@ -65,6 +66,8 @@ class TorqueRuntime:
 
         self.controller.start()
 
+        self._start_phone(config)
+
         how = f"Press {config['hotkey']}"
 
         if config["wake_word_enabled"]:
@@ -73,6 +76,47 @@ class TorqueRuntime:
         logger.success(f"Torque is running. {how} to talk.")
 
         self._run_foreground(config)
+
+    def _start_phone(self, config):
+        """Optional phone access (off by default)."""
+
+        if not config["phone_enabled"]:
+            return
+
+        import socket
+
+        from torque.paths import PHONE_TOKEN
+        from torque.phone.phone_server import PhoneServer, load_or_create_token
+
+        token = load_or_create_token(PHONE_TOKEN)
+
+        self.phone = PhoneServer(
+            self.controller.ask_remote,
+            token,
+            host=config["phone_host"],
+            port=config["phone_port"],
+        )
+
+        if not self.phone.start():
+            self.phone = None
+            return
+
+        try:
+            address = socket.gethostbyname(socket.gethostname())
+        except OSError:
+            address = "your-pc-address"
+
+        # The token goes in the #fragment, which browsers never send to a server.
+        logger.success(f"Phone access is on (port {self.phone.port}).")
+
+        # Printed, not logged: the link contains the secret token.
+        print(f"\nOpen on your phone: http://{address}:{self.phone.port}/#t={token}\n", flush=True)
+
+        if config["phone_host"] in ("0.0.0.0", "::"):
+            logger.warning(
+                "Phone access is plain HTTP on your network. Use Tailscale (and set "
+                "phone_host to its address) on networks you don't trust."
+            )
 
     def _run_foreground(self, config):
         """
@@ -105,6 +149,9 @@ class TorqueRuntime:
     def shutdown(self):
 
         logger.info("Shutting down Torque...")
+
+        if self.phone:
+            self.phone.stop()
 
         if self.controller:
             self.controller.shutdown()

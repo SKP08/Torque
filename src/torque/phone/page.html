@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<title>Torque</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0e14; --card:#161b26; --line:#252c3b; --text:#eef1f6; --dim:#8b95a8; --accent:#7bd8ff; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; font-weight: 650; letter-spacing: .02em; flex: 1; }
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: #f87171; transition: background .3s; }
+  #dot.on { background: #4ade80; }
+  #speak { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+  #speak.on { color: var(--accent); border-color: var(--accent); }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 86%; padding: 10px 14px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .me { align-self: flex-end; background: #1d3a4d; border-color: #285069; }
+  .note { align-self: center; color: var(--dim); font-size: 13px; background: none; border: none; }
+  #chips { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 10px; scrollbar-width: none; }
+  #chips button { flex: none; background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 8px 14px; font-size: 14px; }
+  form { display: flex; gap: 8px; padding: 0 16px 14px; }
+  input { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 999px; padding: 12px 16px; font-size: 16px; outline: none; }
+  input:focus { border-color: var(--accent); }
+  form button { background: var(--accent); color: #06222e; border: none; border-radius: 999px; padding: 0 20px; font-weight: 650; font-size: 15px; }
+  button:disabled { opacity: .5; }
+</style>
+</head>
+<body>
+<header><span id="dot"></span><h1>Torque</h1><button id="speak" type="button">Voice off</button></header>
+<div id="log"></div>
+<div id="chips"></div>
+<form id="form"><input id="text" autocomplete="off" enterkeyhint="send" placeholder="Ask Torque..." maxlength="500"><button id="send" disabled>Send</button></form>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const log = $("log"), dot = $("dot"), input = $("text"), send = $("send");
+
+// The token comes in the URL fragment (#t=...), which browsers never send to a server.
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+const fromHash = new URLSearchParams(location.hash.slice(1)).get("t");
+if (fromHash) { store.set("torque-token", fromHash); history.replaceState(null, "", location.pathname); }
+const token = store.get("torque-token");
+
+let socket = null, nextId = 1, speakOn = store.get("torque-voice") === "1", authed = false, retry = 800;
+
+function add(text, cls) {
+  const div = document.createElement("div");
+  div.className = "msg " + (cls || "");
+  div.textContent = text;           // textContent: replies are never parsed as HTML
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setVoice(on) {
+  speakOn = on; store.set("torque-voice", on ? "1" : "0");
+  $("speak").textContent = on ? "Voice on" : "Voice off";
+  $("speak").classList.toggle("on", on);
+  if (!on) speechSynthesis.cancel();
+}
+
+function say(text) {
+  if (!speakOn || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
+function connect() {
+  if (!token) { add("Open the link Torque printed on your PC; it contains the access token.", "note"); return; }
+  socket = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+  socket.onopen = () => socket.send(JSON.stringify({ type: "auth", token }));
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "auth" && data.ok) { authed = true; retry = 800; dot.classList.add("on"); send.disabled = false; add("Connected to your PC.", "note"); }
+    else if (data.type === "reply") { add(data.text); say(data.text); send.disabled = false; }
+    else if (data.type === "error") { add(data.message, "note"); send.disabled = false; }
+  };
+  socket.onclose = (event) => {
+    dot.classList.remove("on"); send.disabled = true;
+    if (event.code === 4401) { add("Wrong or old token. Open the newest link from your PC.", "note"); return; }
+    if (event.code === 4429) { add("Too many wrong attempts. Try again in a few minutes.", "note"); return; }
+    authed = false; setTimeout(connect, retry); retry = Math.min(retry * 2, 8000);
+  };
+}
+
+function ask(text) {
+  if (!authed || !text.trim()) return;
+  add(text, "me"); send.disabled = true;
+  socket.send(JSON.stringify({ type: "text", id: nextId++, text: text.trim() }));
+}
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); const t = input.value; input.value = ""; ask(t); });
+$("speak").addEventListener("click", () => setVoice(!speakOn));
+for (const label of ["What time is it", "Take a screenshot", "Lock my computer", "Pause", "Volume down", "What's using my CPU", "Any suspicious programs"]) {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = label;
+  b.addEventListener("click", () => ask(label)); $("chips").appendChild(b);
+}
+setVoice(speakOn); connect();
+</script>
+</body>
+</html>

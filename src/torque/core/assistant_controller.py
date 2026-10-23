@@ -214,6 +214,40 @@ class AssistantController:
 
             self._lock.release()
 
+    def ask_remote(self, text: str) -> str:
+        """
+        One request from the phone. The reply is returned, not spoken on the
+        PC, and the overlay stays quiet. Power actions are refused.
+        """
+
+        if not self._lock.acquire(timeout=20):
+            return "Torque is busy with a conversation at the PC. Try again in a moment."
+
+        try:
+            logger.info("Phone request.")
+
+            self.conversation.add_user_message(text)
+
+            sentences = list(
+                self.brain.process_stream(self.conversation.get_history(), remote=True)
+            )
+
+            reply = " ".join(sentences).strip() or "Okay."
+
+            self.conversation.add_assistant_message(reply)
+
+            return reply
+
+        except Exception:  # noqa: BLE001
+            logger.exception("Phone request failed.")
+
+            return "Something went wrong on my side."
+
+        finally:
+            self._needs_reset = True
+
+            self._lock.release()
+
     def activate(self, first_text=None):
         """Run one conversation. `first_text` is a request already heard."""
 

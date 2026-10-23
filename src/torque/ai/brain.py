@@ -218,12 +218,13 @@ class TorqueBrain:
     # MAIN
     # ==========================================================
 
-    def process_stream(self, history: list, on_status=None) -> Iterator[str]:
+    def process_stream(self, history: list, on_status=None, remote: bool = False) -> Iterator[str]:
         """
         Yield the reply one speakable sentence at a time (nothing if there is
         nothing to say).
 
         on_status(state, message) reports UI state changes, e.g. "searching".
+        remote=True marks a request from the phone: power actions are refused.
         """
 
         logger.info("Brain processing request...")
@@ -243,7 +244,7 @@ class TorqueBrain:
 
         # A pending "are you sure?" gets the very next sentence, including a
         # bare "yes" that would otherwise be ignored as an acknowledgement.
-        if self.skills and self.skills.awaiting_confirmation:
+        if self.skills and self.skills.awaiting_confirmation and not remote:
             reply = self.skills.handle(last_user)
 
             if reply:
@@ -266,7 +267,7 @@ class TorqueBrain:
 
         # 2. PC control: volume, media, windows, screenshot, power...
         if self.skills:
-            reply = self.skills.handle(last_user)
+            reply = self.skills.handle(last_user, allow_confirm=not remote)
 
             if reply:
                 yield from split_sentences(reply)
