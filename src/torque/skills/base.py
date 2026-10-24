@@ -16,6 +16,7 @@ class Skill:
     pattern  compiled regex matched against the normalised request
     action   callable(match) -> ActionResult
     prompt   for CONFIRM skills: what Torque asks before doing it
+    local_only  never run for phone requests (desktop control)
     """
 
     name: str
@@ -23,6 +24,7 @@ class Skill:
     pattern: object
     action: object
     prompt: str = ""
+    local_only: bool = False      # refused when the request comes from the phone
 
     def match(self, text: str):
         return self.pattern.match(text)

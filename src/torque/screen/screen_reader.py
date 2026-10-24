@@ -36,35 +36,44 @@ class RapidOcrEngine:
 
         return self._engine
 
-    def read(self, image):
-        """Returns [(x, y, height, text)] for each detected line of text."""
+    def _detect(self, image):
+        """[(box, text, score)] straight from the OCR library."""
 
         import numpy as np
 
         result = self._load()(np.array(image.convert("RGB")))
 
         # rapidocr-onnxruntime returns (result, timing); rapidocr 3.x an object.
-        boxes = result[0] if isinstance(result, tuple) else getattr(result, "boxes", None)
-        texts = None if isinstance(result, tuple) else getattr(result, "txts", None)
-        scores = None if isinstance(result, tuple) else getattr(result, "scores", None)
-
-        lines = []
-
         if isinstance(result, tuple):
+            return [(box, text, score) for box, text, score in (result[0] or [])]
 
-            for box, text, score in (boxes or []):
+        boxes = getattr(result, "boxes", None)
+        texts = getattr(result, "txts", None)
+        scores = getattr(result, "scores", None)
 
-                if float(score) >= MIN_CONFIDENCE:
-                    lines.append(self._line(box, text))
+        if boxes is None or texts is None:
+            return []
 
-        elif boxes is not None and texts is not None:
+        return list(zip(boxes, texts, scores))
 
-            for box, text, score in zip(boxes, texts, scores):
+    def read(self, image):
+        """Returns [(x, y, height, text)] for each detected line of text."""
 
-                if float(score) >= MIN_CONFIDENCE:
-                    lines.append(self._line(box, text))
+        return [self._line(box, text) for box, text, score in self._detect(image)
+                if float(score) >= MIN_CONFIDENCE]
 
-        return lines
+    def read_boxes(self, image):
+        """Returns [(x, y, width, height, text)]: where each line of text is."""
+
+        out = []
+
+        for box, text, score in self._detect(image):
+            if float(score) >= MIN_CONFIDENCE:
+                xs = [p[0] for p in box]
+                ys = [p[1] for p in box]
+                out.append((min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys), text))
+
+        return out
 
     @staticmethod
     def _line(box, text):

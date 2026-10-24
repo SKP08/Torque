@@ -180,6 +180,16 @@ class TorqueBrain:
             skills += build_hud_skills(timers=default_store() if config["timers_enabled"] else None,
                                        network_fn=_network_view(config))
 
+        if config.get("desktop_control_enabled"):
+            try:
+                from torque.desktop.backend import WindowsDesktop
+                from torque.desktop.finder import ScreenFinder
+                from torque.skills.desktop_skills import build_desktop_skills
+
+                skills += build_desktop_skills(ScreenFinder(), WindowsDesktop())
+            except NotImplementedError:
+                logger.warning("Desktop control only works on Windows; leaving it off.")
+
         if config["timers_enabled"]:
             from torque.skills.timer_skills import build_timer_skills
             from torque.timers.store import default_store

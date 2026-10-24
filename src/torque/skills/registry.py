@@ -77,6 +77,9 @@ class SkillRegistry:
             if not match:
                 continue
 
+            if skill.local_only and not allow_confirm:
+                return self.REMOTE_REFUSAL
+
             if skill.tier == CONFIRM:
 
                 if not allow_confirm:
