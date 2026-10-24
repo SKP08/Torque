@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
     "hud_enabled": True,
     "hud_hold_seconds": 10,
     "home_location": None,
+    "routines_enabled": True,
     "desktop_control_enabled": False,
     "browser_enabled": True,
     "browser_channel": "msedge",

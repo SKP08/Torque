@@ -13,6 +13,7 @@
     "hud_enabled": true,
     "hud_hold_seconds": 10,
     "home_location": {"lat": 43.9, "lon": -78.9},
+    "routines_enabled": true,
     "desktop_control_enabled": false,
     "browser_enabled": true,
     "browser_channel": "msedge",

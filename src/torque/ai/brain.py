@@ -157,8 +157,7 @@ class TorqueBrain:
     # PC-CONTROL SKILLS
     # ==========================================================
 
-    @staticmethod
-    def _default_skills():
+    def _default_skills(self):
 
         config = load_config()
 
@@ -201,6 +200,12 @@ class TorqueBrain:
 
             skills += build_security_skills()
 
+        if config.get("routines_enabled", True):
+            from torque.paths import ROUTINES_FILE
+            from torque.skills.routine_skills import RoutineStore, build_routine_skills
+
+            skills += build_routine_skills(RoutineStore(ROUTINES_FILE), self._run_step)
+
         return SkillRegistry(skills) if skills else None
 
     @property
@@ -240,6 +245,17 @@ class TorqueBrain:
                 return None
 
         return result.message
+
+    def _run_step(self, text: str) -> str | None:
+        """One routine step, run as if spoken: PC skills first, then app commands."""
+
+        if self.skills:
+            reply = self.skills.handle(text, allow_confirm=False)
+
+            if reply:
+                return reply
+
+        return self._process_system_commands(text)
 
     def _process_system_commands(self, text: str) -> str | None:
 

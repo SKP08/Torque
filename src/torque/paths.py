@@ -26,3 +26,4 @@ def ensure_dirs() -> None:
     for directory in (DATA_DIR, LOGS_DIR, CONFIG_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 TIMERS_FILE = DATA_DIR / "timers.json"
+ROUTINES_FILE = DATA_DIR / "routines.json"
