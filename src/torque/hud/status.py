@@ -40,7 +40,7 @@ class NetworkRate:
         return (counters.bytes_recv - down) / elapsed, (counters.bytes_sent - up) / elapsed
 
 
-def system_status(probe=None, rate=None) -> dict:
+def system_status(probe=None, rate=None, blocking=True) -> dict:
     """Numbers for the status HUD (and the spoken summary)."""
 
     from torque.skills.security import PsutilProbe
@@ -48,7 +48,8 @@ def system_status(probe=None, rate=None) -> dict:
     probe = probe or PsutilProbe()
     rate = rate or NetworkRate()
 
-    cpu = psutil.cpu_percent(interval=0.3)
+    # blocking=False (background monitors) reads the CPU since the previous call instead of waiting 0.3 s.
+    cpu = psutil.cpu_percent(interval=0.3 if blocking else None)
     memory = psutil.virtual_memory()
 
     try:

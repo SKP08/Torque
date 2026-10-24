@@ -577,10 +577,13 @@ class AssistantController:
         if self.config["alerts_enabled"]:
             from torque.skills.security import PsutilProbe
 
+            from torque.hud.status import NetworkRate
+
             probe = PsutilProbe()
+            rate = NetworkRate()
 
             monitor = AlertMonitor(
-                lambda: system_status(probe=probe),
+                lambda: system_status(probe=probe, rate=rate, blocking=False),
                 probe.listening_ports,
                 categories=self.config["alert_categories"],
             )
