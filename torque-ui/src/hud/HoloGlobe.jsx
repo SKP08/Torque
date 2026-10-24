@@ -67,7 +67,7 @@ function Arc({ from, to, color = CYAN, offset = 0 }) {
   );
 }
 
-function Globe({ target, arcs, home }) {
+function Globe({ target, arcs, home, markers }) {
   const group = useRef();
   const borders = useMemo(() => lineGeometry(worldBorders()), []);
   const grid = useMemo(() => lineGeometry(graticuleSegments(20, 1.0, 4)), []);
@@ -111,6 +111,10 @@ function Globe({ target, arcs, home }) {
       {target && <Marker lon={target.lon} lat={target.lat} />}
       {home && <Marker lon={home.lon} lat={home.lat} color="#5eead4" />}
 
+      {(markers ?? []).map((m) => (
+        <Marker key={`m${m.lon},${m.lat}`} lon={m.lon} lat={m.lat} color={CYAN} />
+      ))}
+
       {(arcs ?? []).map((arc, i) => (
         <Arc key={`${arc.to.lon},${arc.to.lat},${i}`} from={arc.from} to={arc.to} offset={(i * 0.37) % 1} />
       ))}
@@ -118,7 +122,7 @@ function Globe({ target, arcs, home }) {
   );
 }
 
-export default function HoloGlobe({ target = null, arcs = null, home = null }) {
+export default function HoloGlobe({ target = null, arcs = null, home = null, markers = null }) {
   return (
     <Canvas
       className="holo-globe"
@@ -126,7 +130,7 @@ export default function HoloGlobe({ target = null, arcs = null, home = null }) {
       gl={{ alpha: true, antialias: true }}
       dpr={[1, 2]}
     >
-      <Globe target={target} arcs={arcs} home={home} />
+      <Globe target={target} arcs={arcs} home={home} markers={markers} />
     </Canvas>
   );
 }

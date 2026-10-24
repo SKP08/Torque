@@ -32,6 +32,26 @@ _DATE = re.compile(
 )
 
 
+def _network_view(config):
+    """A callable that builds the network-globe payload (None until the GeoIP file exists)."""
+
+    from torque.network.geoip import GeoIP
+    from torque.network.live import network_snapshot
+
+    geoip = GeoIP()
+    home = config.get("home_location")
+
+    def view():
+        nonlocal geoip
+
+        if not geoip.available:
+            geoip = GeoIP()                  # picked up after the user downloads it
+
+        return network_snapshot(geoip, home=home) if geoip.available else None
+
+    return view
+
+
 class TorqueBrain:
     """
     Turns what the user said into a reply, in a fixed order:
@@ -157,7 +177,8 @@ class TorqueBrain:
 
             from torque.timers.store import default_store
 
-            skills += build_hud_skills(timers=default_store() if config["timers_enabled"] else None)
+            skills += build_hud_skills(timers=default_store() if config["timers_enabled"] else None,
+                                       network_fn=_network_view(config))
 
         if config["timers_enabled"]:
             from torque.skills.timer_skills import build_timer_skills

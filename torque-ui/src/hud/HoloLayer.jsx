@@ -51,7 +51,7 @@ function NetworkView({ hud }) {
         transition={{ type: "spring", stiffness: 120, damping: 20 }}
       >
         <Suspense fallback={null}>
-          <HoloGlobe home={home} arcs={arcs} />
+          <HoloGlobe home={home} arcs={arcs} markers={hud.connections ?? []} />
         </Suspense>
       </motion.div>
 
@@ -59,6 +59,7 @@ function NetworkView({ hud }) {
         <motion.section className="holo-panel" initial={{ opacity: 0, x: 60 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}>
           <span className="holo-scan" aria-hidden />
           <h2>Network</h2>
+          <div className="holo-sub">{hud.total ?? 0} outside connections</div>
           <ul className="top-list">
             {(hud.connections ?? []).slice(0, 8).map((c) => (
               <li key={`${c.country}-${c.process}`}>

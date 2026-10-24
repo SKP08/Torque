@@ -21,6 +21,7 @@ DEFAULT_CONFIG = {
     "screen_enabled": True,
     "hud_enabled": True,
     "hud_hold_seconds": 10,
+    "home_location": None,
     "timers_enabled": True,
     "alerts_enabled": True,
     "alert_speech": True,
