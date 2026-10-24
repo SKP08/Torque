@@ -15,6 +15,7 @@ const HOLD_MAX_MS = 60000;
 
 let hideTimer = null;
 let hudTimer = null;
+let toastTimer = null;
 let hudHoldMs = HOLD_DEFAULT_MS;
 
 // Panels stay up while Torque is talking, then for `hold` more seconds.
@@ -28,6 +29,7 @@ function armHudTimer(get, set) {
 
 const useTorqueStore = create((set, get) => ({
   hud: null,
+  toast: null,
   state: "loading",
   message: "",
   heard: "",
@@ -36,6 +38,16 @@ const useTorqueStore = create((set, get) => ({
   visible: !IS_OVERLAY,
 
   setHud: (payload) => {
+    // Alerts are toasts: they never replace panels that are already up.
+    if (payload && payload.kind === "alert") {
+      const hold = Math.min(Math.max(Number(payload.hold) || 8, 3), 30) * 1000;
+
+      clearTimeout(toastTimer);
+      set({ toast: { message: String(payload.message ?? ""), severity: payload.severity, id: Date.now() } });
+      toastTimer = setTimeout(() => set({ toast: null }), hold);
+      return;
+    }
+
     if (!payload || typeof payload !== "object" || !payload.kind) {
       clearTimeout(hudTimer);
       set({ hud: null });

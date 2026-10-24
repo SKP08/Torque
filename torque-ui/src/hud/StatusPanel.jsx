@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 
-import { formatRate } from "./format";
+import { formatClock, formatRate } from "./format";
 
 const RADIUS = 34;
 const CIRC = 2 * Math.PI * RADIUS;
@@ -65,6 +65,14 @@ export default function StatusPanel({ status }) {
         <span>↑ {formatRate(status.network?.up)}</span>
         {status.uptime_hours != null && <span>up {status.uptime_hours} h</span>}
       </div>
+
+      {status.timers?.length > 0 && (
+        <ul className="top-list timers">
+          {status.timers.map((t) => (
+            <li key={t.label + t.seconds}><span>⏱ {t.label}</span><b>{formatClock(t.seconds)}</b></li>
+          ))}
+        </ul>
+      )}
 
       {status.top?.length > 0 && (
         <ul className="top-list">

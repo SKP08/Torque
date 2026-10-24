@@ -191,3 +191,26 @@
 @media (prefers-reduced-motion: reduce) {
   .holo-panel, .holo-scan { animation: none; }
 }
+
+.holo-toast {
+  position: fixed;
+  top: 44px;
+  right: 48px;
+  max-width: min(420px, 40vw);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  overflow: hidden;
+  font: 500 16px/1.35 Inter, "Segoe UI", system-ui, sans-serif;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(40, 140, 190, 0.34), rgba(8, 30, 46, 0.78));
+  border: 1px solid rgba(123, 216, 255, 0.7);
+  box-shadow: 0 0 28px rgba(123, 216, 255, 0.3);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  pointer-events: none;
+}
+.holo-toast.warn { border-color: rgba(255, 107, 107, 0.85); box-shadow: 0 0 28px rgba(255, 107, 107, 0.35); }
+.toast-mark { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #7bd8ff; box-shadow: 0 0 12px #7bd8ff; animation: toast-pulse 1.2s ease-in-out infinite; }
+.holo-toast.warn .toast-mark { background: #ff6b6b; box-shadow: 0 0 12px #ff6b6b; }
+@keyframes toast-pulse { 50% { opacity: 0.35; transform: scale(0.7); } }

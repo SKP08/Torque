@@ -63,6 +63,8 @@ class AssistantController:
         self._activation = threading.Event()         # hotkey / tray / UI asked to start
         self._shutdown = threading.Event()
         self._thread = None
+        self._watcher = None
+        self._pending_speech = []
         self._needs_reset = True
         self._state = "idle"
         self._last_level = 0.0
@@ -133,6 +135,8 @@ class AssistantController:
         )
 
         self._thread.start()
+
+        self._start_alerts()
 
         if self.wake_enabled:
             logger.info("Listening for 'Hey Torque'.")
@@ -274,6 +278,9 @@ class AssistantController:
     def shutdown(self):
 
         self._shutdown.set()
+
+        if self._watcher:
+            self._watcher.stop()
 
         self.cancel()
 
@@ -550,6 +557,71 @@ class AssistantController:
         if self.ws:
             self.ws.send({"state": state, "message": message, **extra})
 
+    # ==========================================================
+    # TIMERS AND ALERTS
+    # ==========================================================
+
+    def _start_alerts(self):
+        """Run the timer / alert watcher (timers fire even if monitors are off)."""
+
+        if self._watcher or not (self.config["timers_enabled"] or self.config["alerts_enabled"]):
+            return
+
+        from torque.alerts.monitors import AlertMonitor
+        from torque.alerts.watcher import AlertWatcher
+        from torque.hud.status import system_status
+        from torque.timers.store import default_store
+
+        monitor = None
+
+        if self.config["alerts_enabled"]:
+            from torque.skills.security import PsutilProbe
+
+            probe = PsutilProbe()
+
+            monitor = AlertMonitor(
+                lambda: system_status(probe=probe),
+                probe.listening_ports,
+                categories=self.config["alert_categories"],
+            )
+
+        self._watcher = AlertWatcher(default_store(), self.announce, monitor,
+                                     on_tick=self._flush_speech)
+        self._watcher.start()
+
+    def announce(self, message: str, severity: str = "info", speak: bool = True):
+        """Show a toast and (when allowed) say it, without interrupting a conversation."""
+
+        self._send_hud({"kind": "alert", "message": message, "severity": severity, "hold": 8})
+
+        if speak and self.config.get("alert_speech", True) and self.tts:
+            self._pending_speech.append(message)
+
+        self._flush_speech()
+
+    def _flush_speech(self):
+        """Say queued alerts as soon as no conversation is running."""
+
+        while self._pending_speech:
+
+            if not self._lock.acquire(blocking=False):
+                return                                  # in a conversation: try again next tick
+
+            try:
+                message = self._pending_speech.pop(0)
+
+                self.speaking(message)
+
+                try:
+                    self.tts.speak(message)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Could not speak alert.")
+
+                self.idle()
+
+            finally:
+                self._lock.release()
+
     def _send_hud(self, payload: dict):
         """Show (or clear) the holographic panels."""
 
@@ -560,7 +632,7 @@ class AssistantController:
             self.ws.send({"hud": None})
             return
 
-        hold = float(self.config.get("hud_hold_seconds", 10))
+        hold = float(payload.get("hold", self.config.get("hud_hold_seconds", 10)))
 
         self.ws.send({"hud": {**payload, "hold": min(max(hold, 3.0), 60.0)}})
 

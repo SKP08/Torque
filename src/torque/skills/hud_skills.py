@@ -5,7 +5,7 @@ from torque.skills.base import SAFE, Skill
 from torque.system.system_commands import ActionResult
 
 
-def build_hud_skills(probe=None, status_fn=None):
+def build_hud_skills(probe=None, status_fn=None, timers=None):
     """Skills whose answer is partly on screen: the status HUD and dismiss."""
 
     rate = NetworkRate()
@@ -13,6 +13,11 @@ def build_hud_skills(probe=None, status_fn=None):
 
     def status(_):
         data = status_fn() if status_fn else system_status(probe=probe, rate=rate)
+
+        if timers is not None:
+            data = {**data, "timers": [{"label": t["label"] or t["kind"], "seconds": int(timers.remaining(t))}
+                                       for t in timers.active()[:4]]}
+
         return ActionResult(True, spoken_status(data), hud=data)
 
     def dismiss(_):

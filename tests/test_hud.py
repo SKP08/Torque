@@ -385,3 +385,15 @@ def test_cache_mount_serves_images_and_blocks_traversal(tmp_path):
             assert body != b"secret" and status in (404, 301, 403), evil
     finally:
         server.stop()
+
+
+def test_status_hud_lists_running_timers():
+    from torque.timers.store import TimerStore
+
+    store = TimerStore(None, clock=lambda: 100.0)
+    store.add(90, "pasta")
+    registry = SkillRegistry(build_hud_skills(status_fn=lambda: {"kind": "status", "cpu": 1, "memory": 2,
+                                                                  "battery": None, "disk": None}, timers=store))
+    huds = []
+    registry.handle("status report", hud=huds.append)
+    assert huds[0]["timers"] == [{"label": "pasta", "seconds": 90}]

@@ -155,7 +155,15 @@ class TorqueBrain:
         if config["hud_enabled"]:
             from torque.skills.hud_skills import build_hud_skills
 
-            skills += build_hud_skills()
+            from torque.timers.store import default_store
+
+            skills += build_hud_skills(timers=default_store() if config["timers_enabled"] else None)
+
+        if config["timers_enabled"]:
+            from torque.skills.timer_skills import build_timer_skills
+            from torque.timers.store import default_store
+
+            skills += build_timer_skills(default_store())
 
         if config["security_skills_enabled"]:
             from torque.skills.security import build_security_skills

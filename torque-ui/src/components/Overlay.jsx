@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import OrbScene from "../scene/OrbScene";
 import LevelBars from "./LevelBars";
 import HoloLayer from "../hud/HoloLayer";
+import Toast from "../hud/Toast";
 import useTorqueStore from "../state/useTorqueStore";
 
 const LABELS = {
@@ -24,20 +25,21 @@ export default function Overlay() {
   const visible = useTorqueStore((s) => s.visible);
   const connected = useTorqueStore((s) => s.connected);
   const hud = useTorqueStore((s) => s.hud);
+  const toast = useTorqueStore((s) => s.toast);
   const clearAfterHide = useTorqueStore((s) => s.clearAfterHide);
 
   // The native window is shown before anything animates in. Panels need the
   // whole screen; the card alone needs only its small window.
   useEffect(() => {
-    if (hud) overlay?.mode("full");
-    if (visible || hud) overlay?.show();
-  }, [visible, hud]);
+    if (hud || toast) overlay?.mode("full");
+    if (visible || hud || toast) overlay?.show();
+  }, [visible, hud, toast]);
 
   // ...and hidden once everything has animated out.
   function hideIfIdle() {
     const s = useTorqueStore.getState();
 
-    if (s.hud) return;
+    if (s.hud || s.toast) return;
 
     overlay?.mode("card");
 
@@ -55,6 +57,7 @@ export default function Overlay() {
   return (
     <div className="stage">
       <HoloLayer hud={hud} onGone={hideIfIdle} />
+      <Toast toast={toast} onGone={hideIfIdle} />
 
       <AnimatePresence onExitComplete={onExitComplete}>
         {visible && (
