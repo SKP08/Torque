@@ -54,7 +54,7 @@ class AgentModel:
 
 
 def build_agent(config):
-    """The agent with file tools, or None if disabled."""
+    """The agent with file tools (and browser tools if enabled), or None if disabled."""
 
     if not config["agent_enabled"]:
         return None
@@ -63,5 +63,25 @@ def build_agent(config):
     from torque.agent.file_tools import FileTools, build_file_tools
 
     tools = build_file_tools(FileTools())
+    rules = ""
+    num_ctx = 4096
 
-    return Agent(AgentModel(config["agent_model"]), tools, max_steps=config["agent_max_steps"])
+    if config.get("browser_enabled"):
+        from torque.agent.browser_tools import (
+            BROWSER_RULES, BrowserTools, PlaywrightBackend, build_browser_tools,
+        )
+        from torque.paths import DATA_DIR
+
+        backend = PlaywrightBackend(DATA_DIR / "browser_profile", channel=config["browser_channel"],
+                                    headless=config["browser_headless"])
+        tools += build_browser_tools(BrowserTools(backend))
+        rules = BROWSER_RULES
+        num_ctx = 8192
+
+    agent = Agent(AgentModel(config["agent_model"], num_ctx=num_ctx), tools,
+                  max_steps=config["agent_max_steps"], extra_rules=rules)
+
+    if config.get("browser_enabled"):
+        agent.closers.append(backend.close)
+
+    return agent

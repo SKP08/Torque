@@ -4,7 +4,7 @@ from datetime import datetime
 
 from loguru import logger
 
-from torque.agent.router import wants_agent
+from torque.agent.router import wants_agent, wants_browser
 from torque.hud.entities import is_info_question
 from torque.ai.context_builder import ContextBuilder
 from torque.ai.ollama_service import OllamaService, OllamaUnavailableError
@@ -340,7 +340,7 @@ class TorqueBrain:
             return
 
         # 4. Multi-step file tasks: the tool-calling agent.
-        if self.agent and wants_agent(last_user):
+        if self.agent and (wants_agent(last_user) or wants_browser(last_user)):
             yield from self._run_agent(last_user, on_status)
 
             return
@@ -476,5 +476,8 @@ class TorqueBrain:
     # ==========================================================
 
     def shutdown(self):
+
+        if self.agent:
+            getattr(self.agent, "close", lambda: None)()
 
         self.worker.shutdown()

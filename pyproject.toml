@@ -30,6 +30,8 @@ dependencies = [
 [project.optional-dependencies]
 # Local OCR for "what's this error?" (bundles its models, works offline).
 screen = ["rapidocr-onnxruntime>=1.2.3"]
+# Browser agent ("go to wikipedia.org and read it"). Uses the Edge that ships with Windows.
+browser = ["playwright>=1.49"]
 # Natural offline voice (Kokoro). Needs the model files: python -m torque.audio.voice_download
 voice = ["phonemizer>=3.3.0", "espeakng-loader>=0.2.4"]
 

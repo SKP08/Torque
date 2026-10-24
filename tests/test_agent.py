@@ -205,7 +205,7 @@ def test_tool_output_is_truncated_for_the_model(files, home):
         (home / "Documents" / f"{'long' * 20}{i}.txt").write_text("x")
     chat = scripted(call("find_files", name="long", folder="Documents"), say("ok"))
     Agent(chat, tools_for(files)).run("x")
-    assert all(len(m["content"]) <= 1500 for m in chat.seen[1] if m["role"] == "tool")
+    assert all(len(m["content"]) <= 3000 for m in chat.seen[1] if m["role"] == "tool")
 
 
 def test_arguments_may_arrive_as_a_json_string(files, home):

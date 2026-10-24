@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from loguru import logger
 
-MAX_RESULT_CHARS = 1500
+MAX_RESULT_CHARS = 3000
 MAX_CALLS_PER_STEP = 3
 
 SYSTEM_PROMPT = (
@@ -65,16 +65,26 @@ class AgentResult:
 
 class Agent:
 
-    def __init__(self, chat, tools, max_steps=8):
+    def __init__(self, chat, tools, max_steps=8, extra_rules=""):
 
+        self.extra_rules = extra_rules
+        self.closers = []                  # called on shutdown (e.g. close the browser)
         self.chat = chat                   # chat(messages, tools) -> {"content", "tool_calls"}
         self.tools = {t.name: t for t in tools}
         self.max_steps = max_steps
 
+    def close(self):
+
+        for closer in self.closers:
+            try:
+                closer()
+            except Exception:  # noqa: BLE001
+                logger.exception("Agent cleanup failed.")
+
     def run(self, request: str, on_step=None) -> AgentResult:
 
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": f"{SYSTEM_PROMPT} {self.extra_rules}".strip()},
             {"role": "user", "content": request},
         ]
 

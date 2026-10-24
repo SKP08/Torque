@@ -28,3 +28,24 @@ def wants_agent(text: str) -> bool:
         return False
 
     return bool(_ACTION.search(said) and _OBJECT.search(said))
+
+
+_BROWSE = re.compile(
+    r"\b(?:browse|browser)\b"
+    r"|\b(?:go|navigate|head) to [\w.-]+\.(?:com|org|net|io|ca|in|edu|gov|co|dev|app|ai|uk)\b"
+    r"|\bvisit [\w.-]+\.(?:com|org|net|io|ca|in|edu|gov|co|dev|app|ai|uk)\b"
+    r"|\b(?:open|go to) (?:the )?(?:website|web ?site|web page|webpage)\b"
+    r"|\b(?:search|look) (?:the web |online |google |the internet )?(?:and|then) (?:open|click|read|go)\b"
+)
+
+
+def wants_browser(text: str) -> bool:
+    """True for web tasks the user spells out ("go to wikipedia.org and read the first paragraph")."""
+
+    said = re.sub(r"[!?,]", " ", (text or "").lower())
+    said = re.sub(r"\s+", " ", said).strip()
+
+    if re.match(r"^(?:how|why|explain|what(?:'s| is) the (?:difference|best))\b", said):
+        return False
+
+    return bool(_BROWSE.search(said))
