@@ -25,6 +25,19 @@ DEFAULT_CONFIG = {
     "filler_after_seconds": 1.5,
     "docs_enabled": True,
     "persistence_watch_enabled": True,
+    "push_enabled": False,
+    "push_topic": "",
+    "push_server": "https://ntfy.sh",
+    "push_idle_seconds": 120,
+    "push_levels": ["warn"],
+    "briefing_enabled": True,
+    "briefing_auto": False,
+    "briefing_time": "08:00",
+    "briefing_city": "",
+    "briefing_lat": None,
+    "briefing_lon": None,
+    "briefing_calendar": "",
+    "user_name": "",
     "dev_enabled": True,
     "dev_project": "",
     "dev_test_command": "uv run pytest -q",
@@ -110,6 +123,20 @@ def load_config(force: bool = False) -> dict:
 
         except (OSError, json.JSONDecodeError) as error:
             logger.warning(f"Could not read settings.json ({error}); using defaults.")
+
+    # Private values (phone-alert topic, calendar URL) live in an untracked file next to settings.json.
+    local = CONFIG_PATH.with_name("settings.local.json")
+
+    if local.exists():
+        try:
+            with open(local, "r", encoding="utf-8") as file:
+                extra = json.load(file)
+
+            if isinstance(extra, dict):
+                config.update(extra)
+
+        except (OSError, json.JSONDecodeError) as error:
+            logger.warning(f"Could not read settings.local.json ({error}); ignoring it.")
 
     _cache = config
 

@@ -114,3 +114,9 @@ def test_explain_process(tmp_path):
 def test_explain_process_does_not_hijack_normal_questions(tmp_path, phrase):
     reg, *_ = skills(tmp_path)
     assert reg.handle(phrase) is None
+
+
+@pytest.mark.parametrize("phrase", ["is it safe", "is this safe", "is that dangerous", "are they safe", "is water safe"])
+def test_pronouns_are_not_process_names(tmp_path, phrase):
+    reg, *_ = skills(tmp_path)
+    assert reg.handle(phrase) is None

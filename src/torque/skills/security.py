@@ -321,7 +321,7 @@ def build_security_skills(probe=None, watch=None):
         "explain_process", SAFE,
         re.compile(r"^(?:(?:what(?:'s| is)|explain|tell me about) (?:the )?(?:process |program )(?P<a>[\w-]{2,40}?)(?: exe)?(?: running)?"
                    r"|(?:what(?:'s| is)|explain|tell me about) (?P<b>[\w-]{2,40}) exe"
-                   r"|(?:is|are) (?:the )?(?:process )?(?P<c>[\w-]{2,40}?)(?: exe)? (?:process )?(?:safe|legit|legitimate|a virus|malware|dangerous|suspicious))$"),
+                   r"|(?:is|are) (?:the )?(?:process )?(?!(?:it|this|that|there|he|she|they|these|those|everything|anything|water|food)\b)(?P<c>[\w-]{2,40}?)(?: exe)? (?:process )?(?:safe|legit|legitimate|a virus|malware|dangerous|suspicious))$"),
         lambda m: ActionResult(True, p.explain_process(probe, m.group("a") or m.group("b") or m.group("c"))),
         lambda m: ActionResult(True, p.explain_process(probe, m.group("proc"))),
     ))

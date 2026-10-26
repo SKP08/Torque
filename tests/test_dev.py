@@ -153,3 +153,9 @@ def test_screen_assistant_adds_coding_hint_only_in_dev_windows():
 
     assert "coding or terminal window" in ask("Code.exe")
     assert "coding or terminal window" not in ask("chrome.exe")
+
+
+def test_what_changed_phrases(repo, tmp_path):
+    r, _ = reg(repo, tmp_path)
+    for phrase in ("what changed", "what's changed", "what have i changed", "git status", "what has changed in my project"):
+        assert r.handle(phrase), phrase

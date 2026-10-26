@@ -285,6 +285,20 @@ class TorqueBrain:
 
             skills += build_security_skills(watch=self._security_watch())
 
+        from torque.push.ntfy import build_pusher
+        from torque.skills.push_skills import build_push_skills
+
+        skills += build_push_skills(build_pusher(config))
+
+        if config.get("briefing_enabled", True):
+            from torque.briefing.builder import Briefing, build_briefing_skills
+            from torque.memory.journal import default_journal
+            from torque.timers.store import default_store as timer_store
+
+            self.briefing = Briefing(config, timers=timer_store(),
+                                     journal=default_journal() if config.get("journal_enabled", True) else None)
+            skills += build_briefing_skills(self.briefing)
+
         if config.get("dev_enabled", True):
             from torque.agent.file_tools import FileTools
             from torque.dev.helper import DevHelper, ProjectFolder

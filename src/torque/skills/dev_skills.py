@@ -64,7 +64,7 @@ def build_dev_skills(helper, file_tools, announce=bus.announce, run_async=None):
               re.compile(r"(?:set|change|switch) (?:my |the )?(?:project|code|working) (?:folder|directory|repo|repository)(?: to)? (?P<folder>.{2,60})$"),
               set_folder),
         Skill("dev_changes", SAFE,
-              re.compile(r"(?:what(?:'s| is| has) (?:changed|new)|which files (?:did i|have i) (?:change|changed|edit|edited)|git status)(?: in (?:my )?(?:project|code|repo))?$"),
+              re.compile(r"(?:what(?:'s| is| has| have i)? (?:changed|new)|what changed|which files (?:did i|have i) (?:change|changed|edit|edited)|git status)(?: in (?:my )?(?:project|code|repo))?$"),
               lambda _: ActionResult(True, helper.changes())),
         Skill("dev_explain_changes", SAFE,
               re.compile(r"(?:explain|summari[sz]e|describe|review) (?:my |the )?(?:changes|diff|uncommitted (?:changes|work)|work in progress)$|what did i (?:change|do|work on)(?: today| so far)?$"),

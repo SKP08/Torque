@@ -723,17 +723,50 @@ class AssistantController:
                 extra=[watch.check] if (watch := getattr(self.brain, "persistence_watch", None)) else (),
             )
 
+        scheduler = self._briefing_scheduler()
+
         def tick():
             self._flush_speech()
             self._maybe_digest()
 
+            if scheduler and not self._lock.locked() and scheduler.due():
+                threading.Thread(target=scheduler.run, args=(self.announce,), name="TorqueBriefing", daemon=True).start()
+
         self._watcher = AlertWatcher(default_store(), self.announce, monitor, on_tick=tick)
         self._watcher.start()
+
+    def _get_pusher(self):
+        """Phone alerts (ntfy), only when push_enabled and a topic are set."""
+
+        if not hasattr(self, "_pusher"):
+            from torque.push.ntfy import build_pusher
+
+            self._pusher = build_pusher(self.config)
+
+        return self._pusher
+
+    def _briefing_scheduler(self):
+        """The automatic daily briefing (off unless briefing_auto is on)."""
+
+        briefing = getattr(self.brain, "briefing", None)
+
+        if not briefing or not self.config.get("briefing_auto", False):
+            return None
+
+        from torque.briefing.builder import BriefingScheduler
+        from torque.paths import DATA_DIR
+
+        return BriefingScheduler(briefing, DATA_DIR / "briefing_state.txt", self.config.get("briefing_time", "08:00"))
 
     def announce(self, message: str, severity: str = "info", speak: bool = True):
         """Show a toast and (when allowed) say it, without interrupting a conversation."""
 
         self._send_hud({"kind": "alert", "message": message, "severity": severity, "hold": 8})
+
+        pusher = self._get_pusher()
+
+        if pusher:
+            pusher.send(message, severity)
 
         if speak and self.config.get("alert_speech", True) and self.tts:
             self._pending_speech.append(message)

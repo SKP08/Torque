@@ -43,3 +43,6 @@ Thumbs.db
 
 # Test fixtures are committed
 !tests/data/
+
+# Private local overrides (phone-alert topic, calendar URL)
+config/settings.local.json
