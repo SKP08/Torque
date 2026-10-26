@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from loguru import logger
 
+from torque.alerts import bus as alert_bus
 from torque.conversation.wake_word import match_wake_word
 from torque.system.config_service import load_config
 from torque.websocket.websocket_service import WebSocketService
@@ -141,6 +142,8 @@ class AssistantController:
 
         if self._thread and self._thread.is_alive():
             return
+
+        alert_bus.set_announcer(self.announce)
 
         self._thread = threading.Thread(
             target=self._main_loop,

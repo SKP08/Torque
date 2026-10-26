@@ -5,6 +5,7 @@ from datetime import datetime
 from loguru import logger
 
 from torque.agent.router import wants_agent, wants_browser
+from torque.docs.answer import is_docs_request
 from torque.hud.entities import is_info_question
 from torque.ai.context_builder import ContextBuilder
 from torque.ai.ollama_service import OllamaService, OllamaUnavailableError
@@ -85,6 +86,7 @@ class TorqueBrain:
         screen=None,
         agent=None,
         info=None,
+        docs=None,
     ):
 
         logger.info("Initializing Torque Brain...")
@@ -122,6 +124,8 @@ class TorqueBrain:
             launcher = AppLauncher()
 
         self.app_launcher = launcher
+
+        self._setup_docs(docs)
 
         if skills is None:
             skills = self._default_skills()
@@ -163,6 +167,51 @@ class TorqueBrain:
     # PC-CONTROL SKILLS
     # ==========================================================
 
+    def _setup_docs(self, docs):
+        """Document Q&A: `docs` is injected in tests; otherwise built from config (off if disabled)."""
+
+        self.docs = None
+        self.docs_index = None
+        self.docs_folders = None
+
+        if docs is not None:
+            self.docs = docs
+            return
+
+        config = load_config()
+
+        if not config.get("docs_enabled", True):
+            return
+
+        try:
+            from torque.docs.answer import DocAssistant, OllamaEmbedder
+            from torque.docs.index import DocIndex
+            from torque.paths import DATA_DIR
+            from torque.skills.docs_skills import FolderList
+
+            self.docs_index = DocIndex(DATA_DIR / "docs.db")
+            self.docs_folders = FolderList(DATA_DIR / "docs_folders.json")
+
+            model = config.get("docs_embedding_model") or ""
+            self.docs = DocAssistant(self.docs_index, self.llm, OllamaEmbedder(model) if model else None)
+
+        except Exception:  # noqa: BLE001
+            logger.exception("Document search unavailable.")
+            self.docs = self.docs_index = self.docs_folders = None
+            return
+
+        folders = self.docs_folders.all()
+
+        if folders:
+            self.worker.submit("Refresh documents", self._refresh_docs, folders)
+
+    def _refresh_docs(self, folders):
+        for folder in folders:
+            try:
+                self.docs_index.index_folder(folder)
+            except Exception:  # noqa: BLE001
+                logger.debug(f"Could not refresh {folder}.", exc_info=True)
+
     def _default_skills(self):
 
         config = load_config()
@@ -194,6 +243,12 @@ class TorqueBrain:
                 skills += build_desktop_skills(ScreenFinder(), WindowsDesktop())
             except NotImplementedError:
                 logger.warning("Desktop control only works on Windows; leaving it off.")
+
+        if self.docs_index is not None:
+            from torque.agent.file_tools import FileTools
+            from torque.skills.docs_skills import build_docs_skills
+
+            skills += build_docs_skills(self.docs_index, self.docs_folders, FileTools())
 
         if config.get("journal_enabled", True):
             from torque.memory.journal import build_journal_skills, default_journal
@@ -383,6 +438,16 @@ class TorqueBrain:
                 on_status("thinking", "Looking at your screen...")
 
             yield from self.screen.answer(last_user)
+
+            return
+
+        # 3b. "What do my notes say about Kerberos?" - search the indexed documents.
+        if self.docs and is_docs_request(last_user):
+
+            if on_status:
+                on_status("thinking", "Searching your documents...")
+
+            yield from self.docs.answer(last_user, on_hud=None if remote else on_hud)
 
             return
 

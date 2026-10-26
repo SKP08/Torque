@@ -32,6 +32,8 @@ dependencies = [
 screen = ["rapidocr-onnxruntime>=1.2.3"]
 # Browser agent ("go to wikipedia.org and read it"). Uses the Edge that ships with Windows.
 browser = ["playwright>=1.49"]
+# Search your PDFs and Word files ("what do my notes say about Kerberos?"). Plain text works without it.
+docs = ["pypdf>=5.0", "python-docx>=1.1"]
 # Natural offline voice (Kokoro). Needs the model files: python -m torque.audio.voice_download
 voice = ["phonemizer>=3.3.0", "espeakng-loader>=0.2.4"]
 

@@ -14,6 +14,8 @@
     "hud_hold_seconds": 10,
     "home_location": {"lat": 43.9, "lon": -78.9},
     "filler_after_seconds": 1.5,
+    "docs_enabled": true,
+    "docs_embedding_model": "",
     "journal_enabled": true,
     "journal_retention_days": 30,
     "barge_in_enabled": false,

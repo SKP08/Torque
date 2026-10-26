@@ -23,6 +23,8 @@ DEFAULT_CONFIG = {
     "hud_hold_seconds": 10,
     "home_location": None,
     "filler_after_seconds": 1.5,
+    "docs_enabled": True,
+    "docs_embedding_model": "",
     "journal_enabled": True,
     "journal_retention_days": 30,
     "barge_in_enabled": False,
