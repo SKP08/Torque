@@ -34,6 +34,14 @@ PROMPT = (
 )
 
 
+DEV_APPS = ("code.exe", "windowsterminal.exe", "powershell.exe", "cmd.exe", "pycharm64.exe", "idea64.exe", "devenv.exe", "wt.exe")
+
+DEV_NOTE = (
+    "\nThe user is in a coding or terminal window. For an error or failing code: name the file and line if visible, "
+    "the most likely cause, then the one-line fix in words (no code blocks)."
+)
+
+
 def is_screen_request(text: str) -> bool:
 
     cleaned = re.sub(r"[.!?,]", " ", (text or "").lower())
@@ -74,16 +82,20 @@ class ScreenAssistant:
             return
 
         where = ""
+        prompt = PROMPT
 
         if self.context_fn:
             try:
                 ctx = self.context_fn()
                 where = f"Active window: {ctx.describe()}\n" if ctx else ""
+
+                if ctx and ctx.process.lower() in DEV_APPS:
+                    prompt += DEV_NOTE
             except Exception:  # noqa: BLE001
                 where = ""
 
         messages = [
-            {"role": "system", "content": PROMPT},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": f"{where}Screen text:\n{text}\n\nRequest: {request}"},
         ]
 

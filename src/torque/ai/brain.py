@@ -285,6 +285,16 @@ class TorqueBrain:
 
             skills += build_security_skills(watch=self._security_watch())
 
+        if config.get("dev_enabled", True):
+            from torque.agent.file_tools import FileTools
+            from torque.dev.helper import DevHelper, ProjectFolder
+            from torque.paths import DATA_DIR
+            from torque.skills.dev_skills import build_dev_skills
+
+            helper = DevHelper(ProjectFolder(DATA_DIR / "dev_project.json", config.get("dev_project", "")),
+                               llm=self.llm, test_command=config.get("dev_test_command", "uv run pytest -q"))
+            skills += build_dev_skills(helper, FileTools())
+
         if config.get("routines_enabled", True):
             from torque.paths import ROUTINES_FILE
             from torque.skills.routine_skills import RoutineStore, build_routine_skills
