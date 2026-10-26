@@ -22,6 +22,8 @@ DEFAULT_CONFIG = {
     "hud_enabled": True,
     "hud_hold_seconds": 10,
     "home_location": None,
+    "filler_after_seconds": 1.5,
+    "context_enabled": True,
     "routines_enabled": True,
     "desktop_control_enabled": False,
     "browser_enabled": True,

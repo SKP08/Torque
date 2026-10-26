@@ -18,6 +18,9 @@ REQUEST = re.compile(
     r"|what(?:'s| is) wrong (?:with this|here)"
     r"|(?:help me with|why (?:is|am i getting|did i get)) (?:this|that|the) (?:error|exception|warning)"
     r"|why (?:am i getting|did i get) this"
+    r"|(?:draft|write|compose|give me) (?:a )?(?:reply|response|answer) (?:to|for) (?:this|that|it)"
+    r"|(?:what(?:'s| is)|what does) (?:this|that) (?:page|article|email|document|file|window|website|site)(?: say| about| mean)?"
+    r"|tl;?dr (?:this|that|it)"
     r")",
 )
 
@@ -43,10 +46,11 @@ def is_screen_request(text: str) -> bool:
 class ScreenAssistant:
     """Look at the screen, then answer about it with the local model."""
 
-    def __init__(self, llm, reader=None):
+    def __init__(self, llm, reader=None, context_fn=None):
 
         self.llm = llm
         self.reader = reader or ScreenReader()
+        self.context_fn = context_fn                 # () -> WindowContext | None
 
     def answer(self, request: str) -> Iterator[str]:
         """Yield the spoken reply, sentence by sentence."""
@@ -69,9 +73,18 @@ class ScreenAssistant:
             yield "I can't see any readable text on the screen."
             return
 
+        where = ""
+
+        if self.context_fn:
+            try:
+                ctx = self.context_fn()
+                where = f"Active window: {ctx.describe()}\n" if ctx else ""
+            except Exception:  # noqa: BLE001
+                where = ""
+
         messages = [
             {"role": "system", "content": PROMPT},
-            {"role": "user", "content": f"Screen text:\n{text}\n\nRequest: {request}"},
+            {"role": "user", "content": f"{where}Screen text:\n{text}\n\nRequest: {request}"},
         ]
 
         chunker = SentenceChunker()

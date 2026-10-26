@@ -102,6 +102,10 @@ class TorqueBrain:
         self.llm = llm or OllamaService()
         self.worker = worker or BackgroundWorker()
 
+        from torque.ai.filler import FillerGate
+
+        self._filler = FillerGate(after=float(load_config().get("filler_after_seconds", 1.5)))
+
         if warm:
             self.llm.warm_up()
 
@@ -127,7 +131,9 @@ class TorqueBrain:
         if screen is None and load_config()["screen_enabled"]:
             from torque.screen.screen_assistant import ScreenAssistant
 
-            screen = ScreenAssistant(self.llm)
+            from torque.desktop.context import active_window
+
+            screen = ScreenAssistant(self.llm, context_fn=active_window)
 
         self.screen = screen or None
 
@@ -188,6 +194,11 @@ class TorqueBrain:
                 skills += build_desktop_skills(ScreenFinder(), WindowsDesktop())
             except NotImplementedError:
                 logger.warning("Desktop control only works on Windows; leaving it off.")
+
+        if config.get("context_enabled", True):
+            from torque.skills.context_skills import build_context_skills
+
+            skills += build_context_skills()
 
         if config["timers_enabled"]:
             from torque.skills.timer_skills import build_timer_skills
@@ -300,6 +311,11 @@ class TorqueBrain:
     # ==========================================================
 
     def process_stream(self, history: list, on_status=None, remote: bool = False, on_hud=None) -> Iterator[str]:
+        """Same as _process_stream, with a spoken "One moment." if the first sentence is slow."""
+
+        yield from self._filler.wrap(self._process_stream(history, on_status, remote, on_hud))
+
+    def _process_stream(self, history: list, on_status=None, remote: bool = False, on_hud=None) -> Iterator[str]:
         """
         Yield the reply one speakable sentence at a time (nothing if there is
         nothing to say).
