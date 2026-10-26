@@ -121,6 +121,7 @@ class TTSService:
     def __init__(self, voice=None, stream_factory=None, engine=None):
 
         self._stop = threading.Event()
+        self.tap = None                 # tap(block, sample_rate): what is about to be played (for barge-in)
         self._stream_factory = stream_factory or _default_stream
 
         if engine is None:
@@ -269,6 +270,12 @@ class TTSService:
                         break
 
                     block = audio[start:start + BLOCK_SAMPLES]
+
+                    if self.tap:
+                        try:
+                            self.tap(block, self.sample_rate)
+                        except Exception:  # noqa: BLE001
+                            logger.debug("Playback tap failed.", exc_info=True)
 
                     stream.write(block.reshape(-1, 1))
 

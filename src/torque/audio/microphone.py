@@ -84,6 +84,8 @@ class MicrophoneService:
         self._interrupt = threading.Event()
 
         self.on_level = None
+        self.last_audio = None      # the most recent utterance (memory only), for voice verification
+        self.on_block = None        # called with every raw 512-sample block (barge-in listens here)
 
         logger.success("Microphone ready.")
 
@@ -107,6 +109,12 @@ class MicrophoneService:
         self._carry = samples[usable:].copy()
 
         for block in samples[:usable].reshape(-1, BLOCK_SIZE):
+
+            if self.on_block:
+                try:
+                    self.on_block(block)
+                except Exception:  # noqa: BLE001
+                    logger.debug("Block hook failed.", exc_info=True)
 
             try:
                 self._queue.put_nowait(block.copy())
@@ -200,11 +208,11 @@ class MicrophoneService:
     # RECORD
     # ----------------------------------------------------------
 
-    def record(self, timeout=None, flush=False):
+    def record(self, timeout=None, flush=False, preroll=None):
         """
         Wait for one utterance. Returns float32 16 kHz mono audio, or None
         if nobody spoke within `timeout` seconds, or if interrupted or
-        cancelled.
+        cancelled. `preroll` is a list of int16 blocks to process first.
         """
 
         self.start()
@@ -213,6 +221,9 @@ class MicrophoneService:
             self.flush()
 
         self.vad.reset()
+
+        # Blocks that were already heard (the start of a barge-in), processed before live audio.
+        pending = list(preroll or [])
 
         collector = UtteranceCollector(
             sample_rate=SAMPLE_RATE,
@@ -237,7 +248,7 @@ class MicrophoneService:
                 return None
 
             try:
-                raw = self._queue.get(timeout=0.1)
+                raw = pending.pop(0) if pending else self._queue.get(timeout=0.1)
 
             except Empty:
 
@@ -259,7 +270,9 @@ class MicrophoneService:
 
         logger.debug(f"Captured {collector.duration:.1f}s of audio.")
 
-        return collector.audio()
+        self.last_audio = collector.audio()
+
+        return self.last_audio
 
     def _restart_stream(self):
 

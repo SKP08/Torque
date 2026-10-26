@@ -52,7 +52,7 @@ class ConversationManager:
     # LISTENING
     # ==========================================================
 
-    def listen(self, timeout=None, flush=True):
+    def listen(self, timeout=None, flush=True, preroll=None):
         """
         Returns the transcript, "" if speech was heard but nothing was
         recognised, or None if nobody spoke before the timeout / the
@@ -64,6 +64,9 @@ class ConversationManager:
 
         if not self.active:
             return None
+
+        if preroll:
+            return self.speech.listen(timeout=timeout, flush=flush, preroll=preroll)
 
         return self.speech.listen(timeout=timeout, flush=flush)
 

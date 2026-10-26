@@ -37,7 +37,7 @@ class AssistantController:
     IDLE_RETRY_SECONDS = 3.0
     LEVEL_INTERVAL = 0.05         # seconds between microphone-level messages
 
-    def __init__(self, manager, brain=None, tts=None, conversation=None, chime=None):
+    def __init__(self, manager, brain=None, tts=None, conversation=None, chime=None, barge_in=None, voice_gate=None):
 
         self.manager = manager
         self.config = load_config()
@@ -65,9 +65,21 @@ class AssistantController:
         self._thread = None
         self._watcher = None
         self._pending_speech = []
+        self._barge = None
+        self._barged = False
+        self._voice_gate = None
         self._needs_reset = True
         self._state = "idle"
         self._last_level = 0.0
+
+        self._setup_barge_in(barge_in)
+
+        if voice_gate is not None:
+            self._voice_gate = voice_gate
+        elif self.config.get("voice_lock_enabled"):
+            from torque.audio.speaker import load_gate
+
+            self._voice_gate = load_gate(self.config)
 
         if self.ws:
             self.ws.set_message_handler(self.handle_message)
@@ -353,6 +365,13 @@ class AssistantController:
             logger.debug("Ignored speech that was not for Torque.")
             return None
 
+        if self._voice_gate is not None:
+            audio = getattr(getattr(speech, "microphone", None), "last_audio", None)
+
+            if not self._voice_gate.accepts(audio):
+                logger.info("Wake word ignored: not the enrolled voice.")
+                return None
+
         return Trigger("wake", match.remainder)
 
     # ==========================================================
@@ -386,7 +405,7 @@ class AssistantController:
                     else self.config["followup_timeout"]
                 )
 
-                text = self.conversation.listen(timeout=timeout)
+                text = self.conversation.listen(timeout=timeout, **self._barge_listen())
 
                 # Silence (or cancelled): end the conversation quietly.
                 if text is None:
@@ -512,11 +531,18 @@ class AssistantController:
 
             return
 
+        if self._barge:
+            self._barge.arm(self._on_barge)
+
         try:
             self.tts.speak(speech)
 
         except Exception:  # noqa: BLE001
             logger.exception("Text-to-speech failed.")
+
+        finally:
+            if self._barge:
+                self._barge.disarm()
 
     def _play_chime(self):
 
@@ -556,6 +582,60 @@ class AssistantController:
 
         if self.ws:
             self.ws.send({"state": state, "message": message, **extra})
+
+    # ==========================================================
+    # BARGE-IN
+    # ==========================================================
+
+    def _setup_barge_in(self, barge):
+        """Let the user interrupt Torque by talking (off unless barge_in_enabled)."""
+
+        microphone = getattr(self.conversation.speech, "microphone", None)
+
+        if barge is None:
+            if not self.config.get("barge_in_enabled") or not self.tts or microphone is None:
+                return
+
+            try:
+                from torque.audio.bargein import BargeIn
+
+                barge = BargeIn()
+
+            except Exception:  # noqa: BLE001
+                logger.exception("Barge-in unavailable.")
+                return
+
+        self._barge = barge
+
+        if self.tts is not None:
+            self.tts.tap = barge.tap
+
+        if microphone is not None:
+            microphone.on_block = barge.feed
+
+        logger.info("Barge-in on: you can interrupt Torque by talking.")
+
+    def _on_barge(self):
+        """Called from the audio thread the moment the user starts talking over Torque."""
+
+        logger.info("Barge-in.")
+
+        self._barged = True
+
+        try:
+            self.tts.stop()
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not stop speech.", exc_info=True)
+
+    def _barge_listen(self) -> dict:
+        """listen() arguments after an interruption: keep what was heard instead of flushing it."""
+
+        if not self._barged or not self._barge:
+            return {}
+
+        self._barged = False
+
+        return {"flush": False, "preroll": self._barge.take_preroll()}
 
     # ==========================================================
     # TIMERS AND ALERTS

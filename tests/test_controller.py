@@ -21,9 +21,10 @@ class FakeSpeech:
         self.interrupted = False
         self.level_callback = None
 
-    def listen(self, timeout=None, flush=False, max_seconds=None):
+    def listen(self, timeout=None, flush=False, max_seconds=None, preroll=None):
         self.timeouts.append(timeout)
         self.flushes.append(flush)
+        self.prerolls = getattr(self, "prerolls", []) + [preroll]
         return self.script.pop(0) if self.script else None
 
     def set_level_callback(self, callback):

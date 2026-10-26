@@ -12,7 +12,7 @@ class SpeechService:
         self.microphone = microphone or MicrophoneService()
         self.whisper = whisper or WhisperService()
 
-    def listen(self, timeout=None, flush=False, max_seconds=None):
+    def listen(self, timeout=None, flush=False, max_seconds=None, preroll=None):
         """
         Returns the transcript, "" if speech was heard but not recognised,
         or None if nobody spoke before `timeout` / the wait was interrupted.
@@ -25,7 +25,7 @@ class SpeechService:
         run through Whisper.
         """
 
-        audio = self.microphone.record(timeout=timeout, flush=flush)
+        audio = self.microphone.record(timeout=timeout, flush=flush, preroll=preroll)
 
         if audio is None:
             return None
