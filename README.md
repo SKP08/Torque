@@ -48,6 +48,13 @@ uv run python -m torque.network.geoip
 # 4d. Optional: browser agent and "what's this error?" OCR
 uv sync --extra browser --extra screen
 
+# 4e. Optional: ask questions about your notes, PDFs and Word files
+uv sync --extra docs
+
+# 4f. Optional: only answer to YOUR voice (~25 MB model, then say a few sentences)
+uv run python -m torque.audio.speaker download
+uv run python -m torque.audio.speaker enroll
+
 # 5. Optional: web search
 copy .env.example .env      # then put your Tavily key in .env
 ```
@@ -119,6 +126,13 @@ Try: "open chrome", "open spotify and then open discord", "close discord",
 | "Go to wikipedia.org and read the first paragraph" | Local browser agent (Playwright, uses the Edge that ships with Windows) |
 | "Click save", "scroll down", "type hello" | Desktop control through on-screen text (**off by default**, see below) |
 
+| "What do my notes say about Kerberos?" (after "index my documents") | Searches your notes/PDFs/Word files locally, answers from the matching passages and shows them as panels |
+| "Give me my briefing" | Date, weather, today's calendar, reminders and yesterday's summary |
+| "What did I talk about yesterday?" / "what happened this week" | Daily journal (kept 30 days, summarised overnight by the local model; "forget my history" erases it) |
+| "Reply to this" / "tl;dr this page" / "fix this error" | Reads the active window; in VS Code or a terminal it names the likely cause and fix |
+| "Set my project folder to torque", "what changed", "explain my changes", "run the tests", "why did it fail" | Coding sidekick: git summary, test run (asks first) and an explanation of failures. It never edits files |
+| "What's in my startup", "has my hosts file changed", "explain the process svchost" | Security copilot; Torque also warns when a new startup item, scheduled task or hosts-file redirect appears |
+
 Torque also warns you out loud (only when no conversation is running) when the
 battery is low, CPU or memory stay high, the disk is nearly full, or a program
 opens a new port to your network. Switch categories with `alert_categories`.
@@ -130,6 +144,29 @@ opens a new port to your network. Switch categories with `alert_categories`.
 than real time on your PC it uses Piper instead, so the assistant never lags.
 Kokoro needs the model files (step 4b) and `espeak-ng` comes bundled with the
 `voice` extra.
+
+### Interrupting, voice lock and phone alerts
+
+- **Barge-in** (`barge_in_enabled`, off by default): talk over Torque and it stops and listens.
+  It subtracts its own voice from the microphone signal (an echo canceller), so use
+  headphones for the most reliable result. Tuned on simulated rooms only, so expect to
+  adjust it on your laptop.
+- **Voice lock** (`voice_lock_enabled`, off by default): after enrolling (step 4f), speech
+  from anyone else is ignored. `voice_lock_threshold` (default 0.5) trades strictness for convenience.
+- **Documents** (`docs_enabled`): "index my documents" (or downloads/desktop/notes/"the X folder")
+  reads text, markdown, code, HTML, PDF and Word files into a local search database
+  (`data/docs.db`). Files with names like `.env`, `password`, `secret`, `*.key`, `*.pem` are never read.
+  Set `docs_embedding_model` (for example `nomic-embed-text` after `ollama pull`) for meaning-based ranking.
+- **Morning briefing**: say "give me my briefing", or set `briefing_auto` to have it spoken once a day
+  after `briefing_time`. Set `briefing_city` (or `briefing_lat`/`briefing_lon`) for the weather (Open-Meteo, free).
+  For a calendar, set `briefing_calendar` to an `.ics` file or Google Calendar's "secret address in iCal format"
+  URL. That URL is a password to your calendar, so put it in `config/settings.local.json`, not `settings.json`.
+  Repeating events with daily/weekly/monthly/yearly rules are understood; fixed-count series are skipped.
+- **Phone alerts**: install the free ntfy app, pick a long random topic, and put this in
+  `config/settings.local.json` (git-ignored):
+  `{"push_enabled": true, "push_topic": "torque-yourRandomLettersHere"}`.
+  Warnings are sent only when you have been away from the PC for `push_idle_seconds`.
+  Say "send a test alert to my phone" to check it. Anyone who knows the topic can read the alerts.
 
 ### Holographic panels
 
@@ -199,6 +236,17 @@ IP-to-country data: DB-IP.com "IP to Country Lite" (CC BY 4.0).
 | `timers_enabled` | `true` | Timers and reminders |
 | `alerts_enabled` / `alert_speech` | `true` / `true` | Proactive warnings / say them aloud |
 | `alert_categories` | all | `battery`, `cpu`, `memory`, `disk`, `ports` |
+| `filler_after_seconds` | `1.5` | Say "One moment" if the first words take longer than this |
+| `context_enabled` | `true` | Knows the active window (private windows are redacted) |
+| `barge_in_enabled` | `false` | Interrupt Torque by talking over it |
+| `voice_lock_enabled` / `voice_lock_threshold` | `false` / `0.5` | Only respond to your enrolled voice |
+| `journal_enabled` / `journal_retention_days` | `true` / `30` | Daily conversation journal |
+| `docs_enabled` / `docs_embedding_model` | `true` / `""` | Document Q&A; optional Ollama embedding model |
+| `persistence_watch_enabled` | `true` | Alert on new startup items, scheduled tasks and hosts-file changes |
+| `dev_enabled` / `dev_project` / `dev_test_command` | `true` / `""` / `uv run pytest -q` | Coding sidekick |
+| `briefing_enabled` / `briefing_auto` / `briefing_time` | `true` / `false` / `08:00` | Morning briefing |
+| `briefing_city` / `briefing_lat` / `briefing_lon` / `briefing_calendar` / `user_name` | empty | Briefing details |
+| `push_enabled` / `push_topic` / `push_idle_seconds` / `push_levels` | `false` / `""` / `120` / `["warn"]` | Phone alerts (keep the topic in `settings.local.json`) |
 | `routines_enabled` | `true` | Voice-defined routines (`data/routines.json`) |
 | `browser_enabled` / `browser_channel` / `browser_headless` | `true` / `msedge` / `false` | Browser agent |
 | `desktop_control_enabled` | `false` | Voice mouse/keyboard control |
@@ -236,11 +284,15 @@ tests/                 pytest suite
 1. Time/date questions are answered locally.
 2. Skills (`skills/`): PC control, status/network/dismiss, timers, routines, security, desktop control; a pending "are you sure?" gets the next sentence first.
 3. Screen questions (`screen/`).
+3b. Questions about your documents (`docs/`).
 4. File and browser tasks go to the agent (`agent/`).
 5. App commands (`open`, `launch`, `close`; `start`, `run`, `quit`, `exit` only
    when they name a real app, so "quit smoking tips" is just a sentence).
 6. Web search for news, weather, scores, prices, "latest ..." questions.
 7. Otherwise the local LLM, with relevant memories added to the prompt.
+
+If the first words take longer than `filler_after_seconds`, a short "One moment" is
+spoken so the pause isn't silent (`ai/filler.py`).
 
 Info questions ("what is...", "who is...", "tell me about...") also start a
 background lookup of the people, places and things in the answer; if panels are
@@ -277,6 +329,7 @@ Tests that need a real browser, OCR engine, Kokoro model or GeoIP file skip them
 - What you say *to* Torque (after the wake word) is written to `logs/torque.log`.
 - Alerts are spoken through the same speakers the microphone listens to; they
   only play when no conversation is running.
-- `data/` also holds `browser_profile/`, `timers.json`, `routines.json`, `hud_cache/` and `geoip/`. None of it is committed.
+- Optional private values (phone-alert topic, calendar URL) go in `config/settings.local.json`, which is git-ignored and overrides `settings.json`.
+- `data/` also holds `docs.db`, `docs_folders.json`, `security_baseline.json`, `briefing_state.txt`, `dev_project.json`, `voice_profile.npy` (your voiceprint), and `browser_profile/`, `timers.json`, `routines.json`, `hud_cache/` and `geoip/`. None of it is committed.
 - `close` asks apps to close politely (like clicking X) and refuses to touch
   Explorer and other system processes.
