@@ -195,6 +195,11 @@ class TorqueBrain:
             except NotImplementedError:
                 logger.warning("Desktop control only works on Windows; leaving it off.")
 
+        if config.get("journal_enabled", True):
+            from torque.memory.journal import build_journal_skills, default_journal
+
+            skills += build_journal_skills(default_journal(), chat=self.llm.chat)
+
         if config.get("context_enabled", True):
             from torque.skills.context_skills import build_context_skills
 

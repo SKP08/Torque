@@ -37,7 +37,7 @@ class AssistantController:
     IDLE_RETRY_SECONDS = 3.0
     LEVEL_INTERVAL = 0.05         # seconds between microphone-level messages
 
-    def __init__(self, manager, brain=None, tts=None, conversation=None, chime=None, barge_in=None, voice_gate=None):
+    def __init__(self, manager, brain=None, tts=None, conversation=None, chime=None, barge_in=None, voice_gate=None, journal=None):
 
         self.manager = manager
         self.config = load_config()
@@ -68,6 +68,8 @@ class AssistantController:
         self._barge = None
         self._barged = False
         self._voice_gate = None
+        self._journal = journal
+        self._last_digest = None
         self._needs_reset = True
         self._state = "idle"
         self._last_level = 0.0
@@ -148,6 +150,7 @@ class AssistantController:
 
         self._thread.start()
 
+        self._start_journal()
         self._start_alerts()
 
         if self.wake_enabled:
@@ -520,6 +523,8 @@ class AssistantController:
 
             logger.info(f"Torque: {reply}")
 
+            self._record_turn(reply)
+
     def _speak(self, speech):
         """Speak a string or an iterable of sentences (always consumed)."""
 
@@ -584,6 +589,52 @@ class AssistantController:
             self.ws.send({"state": state, "message": message, **extra})
 
     # ==========================================================
+    # JOURNAL (what we did today, summarised overnight)
+    # ==========================================================
+
+    DIGEST_EVERY = 1800.0           # seconds between "any finished days to summarise?" checks
+
+    def _start_journal(self):
+        if self._journal is None and self.config.get("journal_enabled", True):
+            try:
+                from torque.memory.journal import default_journal
+
+                self._journal = default_journal()
+            except Exception:  # noqa: BLE001
+                logger.exception("Journal unavailable.")
+
+    def _record_turn(self, reply: str):
+        if not self._journal:
+            return
+
+        user = next((m["content"] for m in reversed(self.conversation.get_history()) if m["role"] == "user"), "")
+
+        try:
+            self._journal.record(user, reply)
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not write to the journal.")
+
+    def _maybe_digest(self):
+        """Quietly summarise finished days with the local model, never during a conversation."""
+
+        if not self._journal or (self._last_digest is not None
+                                 and time.monotonic() - self._last_digest < self.DIGEST_EVERY):
+            return
+
+        if self._lock.locked():
+            return
+
+        self._last_digest = time.monotonic()
+
+        llm = getattr(getattr(self.brain, "llm", None), "chat", None)
+
+        if llm is None:
+            return
+
+        threading.Thread(target=self._journal.summarise_missing, args=(llm,),
+                         name="TorqueDigest", daemon=True).start()
+
+    # ==========================================================
     # BARGE-IN
     # ==========================================================
 
@@ -644,7 +695,7 @@ class AssistantController:
     def _start_alerts(self):
         """Run the timer / alert watcher (timers fire even if monitors are off)."""
 
-        if self._watcher or not (self.config["timers_enabled"] or self.config["alerts_enabled"]):
+        if self._watcher or not (self.config["timers_enabled"] or self.config["alerts_enabled"] or self._journal):
             return
 
         from torque.alerts.monitors import AlertMonitor
@@ -668,8 +719,11 @@ class AssistantController:
                 categories=self.config["alert_categories"],
             )
 
-        self._watcher = AlertWatcher(default_store(), self.announce, monitor,
-                                     on_tick=self._flush_speech)
+        def tick():
+            self._flush_speech()
+            self._maybe_digest()
+
+        self._watcher = AlertWatcher(default_store(), self.announce, monitor, on_tick=tick)
         self._watcher.start()
 
     def announce(self, message: str, severity: str = "info", speak: bool = True):
