@@ -720,6 +720,7 @@ class AssistantController:
                 lambda: system_status(probe=probe, rate=rate, blocking=False),
                 probe.listening_ports,
                 categories=self.config["alert_categories"],
+                extra=[watch.check] if (watch := getattr(self.brain, "persistence_watch", None)) else (),
             )
 
         def tick():

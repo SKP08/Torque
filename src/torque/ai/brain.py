@@ -212,6 +212,20 @@ class TorqueBrain:
             except Exception:  # noqa: BLE001
                 logger.debug(f"Could not refresh {folder}.", exc_info=True)
 
+    def _security_watch(self):
+        """One persistence watch shared by the skills and the background alerts (None if off)."""
+
+        if not load_config().get("persistence_watch_enabled", True):
+            return None
+
+        if getattr(self, "persistence_watch", None) is None:
+            from torque.paths import DATA_DIR
+            from torque.security.persistence import PersistenceWatch
+
+            self.persistence_watch = PersistenceWatch(DATA_DIR / "security_baseline.json")
+
+        return self.persistence_watch
+
     def _default_skills(self):
 
         config = load_config()
@@ -269,7 +283,7 @@ class TorqueBrain:
         if config["security_skills_enabled"]:
             from torque.skills.security import build_security_skills
 
-            skills += build_security_skills()
+            skills += build_security_skills(watch=self._security_watch())
 
         if config.get("routines_enabled", True):
             from torque.paths import ROUTINES_FILE

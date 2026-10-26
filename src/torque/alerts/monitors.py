@@ -24,9 +24,10 @@ class AlertMonitor:
 
     def __init__(self, status_fn, ports_fn=None, categories=CATEGORIES, sustain=3,
                  clock=time.monotonic, battery_low=20, battery_critical=8,
-                 cpu_high=90, memory_high=92, disk_high=95):
+                 cpu_high=90, memory_high=92, disk_high=95, extra=()):
         self.status_fn = status_fn
         self.ports_fn = ports_fn
+        self.extra = list(extra)        # more checks: callables returning [Alert]
         self.categories = set(categories)
         self.sustain = sustain
         self.clock = clock
@@ -60,6 +61,12 @@ class AlertMonitor:
             alerts += self._disk(status)
 
         alerts += self._new_ports()
+
+        for check in self.extra:
+            try:
+                alerts += check()
+            except Exception:  # noqa: BLE001
+                pass
 
         return alerts
 
