@@ -261,8 +261,10 @@ def test_routing_phrases():
     from torque.agent.router import wants_browser
 
     yes = ["go to wikipedia.org and read the first paragraph", "browse to github.com", "visit example.com",
-           "open the website and click pricing", "use the browser to find the weather"]
+           "open the website and click pricing", "use the browser to find the weather",
+           "open the browser and go to github.com", "open edge browser and then search for cats"]
     no = ["open spotify", "how do i browse files in python", "what is the capital of india", "close chrome",
-          "search for pizza", "go to sleep", "what's in my downloads"]
+          "search for pizza", "go to sleep", "what's in my downloads",
+          "open microsoft edge browser", "open the chrome browser", "launch my browser", "start firefox browser"]
     assert all(wants_browser(t) for t in yes)
     assert not any(wants_browser(t) for t in no)

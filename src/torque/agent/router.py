@@ -48,4 +48,9 @@ def wants_browser(text: str) -> bool:
     if re.match(r"^(?:how|why|explain|what(?:'s| is) the (?:difference|best))\b", said):
         return False
 
+    # "open edge browser" / "launch the chrome browser" is just opening an app, not a web task.
+    if re.match(r"^(?:please )?(?:open|launch|start|run)(?: up)? (?:the |my )?[\w .-]{1,40}$", said) \
+            and not re.search(r"\b(?:and|then)\b|\.(?:com|org|net|io|ca|in|edu|gov|co|dev|app|ai|uk)\b|website|web ?page", said):
+        return False
+
     return bool(_BROWSE.search(said))

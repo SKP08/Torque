@@ -13,6 +13,7 @@ Guard rails, because the model is small:
 """
 
 import json
+import time
 from dataclasses import dataclass, field
 
 from loguru import logger
@@ -65,13 +66,15 @@ class AgentResult:
 
 class Agent:
 
-    def __init__(self, chat, tools, max_steps=8, extra_rules=""):
+    def __init__(self, chat, tools, max_steps=8, extra_rules="", time_limit=90.0, clock=time.monotonic):
 
         self.extra_rules = extra_rules
         self.closers = []                  # called on shutdown (e.g. close the browser)
         self.chat = chat                   # chat(messages, tools) -> {"content", "tool_calls"}
         self.tools = {t.name: t for t in tools}
         self.max_steps = max_steps
+        self.time_limit = time_limit      # seconds; a slow model must not keep the user waiting for minutes
+        self.clock = clock
 
     def close(self):
 
@@ -91,8 +94,12 @@ class Agent:
         schemas = [t.schema() for t in self.tools.values()]
         steps = []
         failed = set()
+        deadline = self.clock() + self.time_limit
 
         for _ in range(self.max_steps):
+
+            if self.time_limit and self.clock() > deadline:
+                return AgentResult("That's taking too long, so I stopped. " + self._summary(steps), steps, finished=False)
 
             reply = self.chat(messages, schemas)
 

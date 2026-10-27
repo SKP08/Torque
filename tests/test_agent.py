@@ -287,3 +287,16 @@ def test_missing_agent_model_gives_a_helpful_message():
     out = " ".join(brain_with(FakeAgent(error=OllamaUnavailableError("model not found"))).process_stream(
         [{"role": "user", "content": "unzip the file in my downloads"}]))
     assert "ollama pull qwen3:4b" in out
+
+
+def test_agent_stops_when_the_time_limit_passes():
+    from torque.agent.agent import Agent
+    t = {"now": 0.0}
+
+    def slow_chat(messages, schemas):
+        t["now"] += 60
+        return {"content": "", "tool_calls": [{"function": {"name": "nothing", "arguments": {}}}]}
+
+    agent = Agent(slow_chat, [], max_steps=8, time_limit=90, clock=lambda: t["now"])
+    result = agent.run("do something slow")
+    assert not result.finished and "taking too long" in result.reply
